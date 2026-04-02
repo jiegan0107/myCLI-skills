@@ -1,0 +1,613 @@
+# Review: Last 7 commits in linux-next (qcom-tgu series)
+
+**Date**: 2026-04-02
+**Reviewer**: AI agent
+**Mode**: A — local commits
+**Repository**: /local/mnt/workspace/jiegan/code/linux-next
+**Commits / Patches**: 7
+
+---
+================================================================
+## Overall Summary   <<<  VERDICT AT A GLANCE
+================================================================
+
+**Total commits reviewed**: 7
+**Bugs found**: 5
+**Concerns**: 4
+**Minor issues**: 6
+
+### Recommendation
+NEEDS FIXES
+
+### Key findings
+
+────────────────────────────────────────────────────────────────
+CORRECTNESS / BUG
+────────────────────────────────────────────────────────────────
+
+- [BUG] 833bbebd4d03 — qcom-tgu: Add TGU decode support
+
+  tgu_write_all_hw_regs() uses `index` as both the loop variable and the
+  return-value sentinel at label `exit:`. When all loops complete successfully
+  `index` holds the last valid value (>= 0) so the ternary returns 0 — fine.
+  But if the very first loop is never entered (num_step == 0), `index` is
+  uninitialised at `exit:`, causing undefined behaviour. The function should
+  track success with a dedicated `rc` variable, not reuse the array index.
+
+  File: drivers/hwtracing/qcom/tgu.c, line ~274
+
+  Suggestion: Add `int rc = 0;` at function top; on error set `rc = -EINVAL;
+  goto exit;`; at the label do `TGU_LOCK(); return rc;`. Remove the
+  `index >= 0` ternary.
+
+- [BUG] efb8b437a854 — qcom-tgu: Add reset node to initialize
+
+  reset_tgu_store() drops and re-acquires drvdata->lock around the
+  pm_runtime_resume_and_get() call, leaving a TOCTOU window: another thread
+  can enable the TGU between the two lock sections, after which
+  tgu_do_disable() silently kills a live session. Additionally,
+  pm_runtime_put() is called unconditionally at the end even when the device
+  was already enabled on entry (pm_runtime_resume_and_get was skipped),
+  causing a PM reference-count underflow.
+
+  File: drivers/hwtracing/qcom/tgu.c, line ~436
+
+  Suggestion: Use a single scoped_guard(spinlock) covering the whole reset,
+  consistent with enable_tgu_store(). Track whether pm_runtime_resume_and_get
+  was called with a local bool so the matching put() is only issued when needed.
+
+- [BUG] c3c8fd06f6e8 — qcom-tgu: Add signal priority support
+
+  In tgu_probe(), sysfs_create_groups() is called before value_table is
+  allocated. The sysfs show/store callbacks dereference drvdata->value_table
+  directly. A userspace open between sysfs_create_groups() and the subsequent
+  devm_kzalloc() for value_table will dereference NULL, causing a kernel oops.
+
+  File: drivers/hwtracing/qcom/tgu.c, line ~602
+
+  Suggestion: Move sysfs_create_groups() to after all value_table allocations
+  are complete.
+
+- [BUG] 3b5fa8ce6111 — qcom-tgu: Add support to configure next action
+
+  tgu_node_visible() mutates attr->name = "default" at runtime. The attr
+  pointer points into a const struct attribute_group whose attrs entries are
+  compile-time-initialised compound literals. Writing to attr->name on a
+  const-qualified object is undefined behaviour and will crash on architectures
+  that place read-only data in write-protected pages. is_visible() may also be
+  called multiple times, making the mutation non-idempotent.
+
+  File: drivers/hwtracing/qcom/tgu.c, line ~170
+
+  Suggestion: Introduce a STEP_SELECT_DEFAULT() macro that initialises the
+  last select attribute with .attr.attr.name = "default" at compile time,
+  rather than mutating the name at runtime.
+
+- [BUG] 2c69080504f6 — qcom-tgu: Add TGU driver
+
+  pm_runtime_enable() is never called in tgu_probe(). The AMBA bus calls
+  pm_runtime_get_sync() before .probe, so the refcount starts at 1 and the
+  pm_runtime_put() at probe end is correct. But without pm_runtime_enable(),
+  all subsequent pm_runtime_resume_and_get() calls in enable_tgu_store() and
+  reset_tgu_store() return -EACCES (runtime PM disabled), making the driver
+  non-functional at runtime. pm_runtime_disable() is also missing from
+  tgu_remove().
+
+  File: drivers/hwtracing/qcom/tgu.c, line ~665 (probe) and tgu_remove()
+
+  Suggestion: Add pm_runtime_enable(dev) before pm_runtime_put() at end of
+  probe. Add pm_runtime_disable(dev) at the start of tgu_remove(), following
+  the coresight ETM4x pattern.
+
+────────────────────────────────────────────────────────────────
+KCONFIG / BUILD
+────────────────────────────────────────────────────────────────
+
+- [CONCERN] 2c69080504f6 — qcom-tgu: Add TGU driver — missing Kconfig guards
+
+  CONFIG_QCOM_TGU has no `depends on` guard (e.g. ARCH_QCOM || COMPILE_TEST)
+  and no `depends on ARM_AMBA`, so it appears in every architecture menuconfig
+  and can be selected on non-Qualcomm platforms. drivers/Makefile adds
+  `obj-y += hwtracing/qcom/` unconditionally; while harmless (sub-Makefile
+  gates on CONFIG_QCOM_TGU), it is inconsistent with neighbouring entries
+  like obj-$(CONFIG_STM) and obj-$(CONFIG_HISI_PTT).
+
+  File: drivers/hwtracing/qcom/Kconfig line ~7; drivers/Makefile line ~180
+
+  Suggestion: Add `depends on ARCH_QCOM || COMPILE_TEST` and
+  `depends on ARM_AMBA` to config QCOM_TGU. Optionally change obj-y to
+  obj-$(CONFIG_QCOM_TGU) in drivers/Makefile.
+
+- [CONCERN] 2c69080504f6 / d8ed899cb600 — Missing MAINTAINERS entry
+
+  No MAINTAINERS entry covers drivers/hwtracing/qcom/,
+  Documentation/devicetree/bindings/arm/qcom,tgu.yaml, or
+  Documentation/ABI/testing/sysfs-bus-amba-devices-tgu.
+  checkpatch warns about this for patches 1 and 2.
+
+  Suggestion: Add a MAINTAINERS block with M:, L:, S:, and F: lines covering
+  all three paths above.
+
+────────────────────────────────────────────────────────────────
+PATCH SCOPE / SERIES ORDERING
+────────────────────────────────────────────────────────────────
+
+- [CONCERN] efb8b437a854 — Series ordering inconsistency
+
+  The reset patch (HEAD, authored 2025-12-08) predates commits 3-6
+  (Feb-Apr 2026) in author date. The series was reordered for submission
+  without rebasing, which may confuse bisection tooling.
+
+  Suggestion: Rebase the reset patch on top of the timer/counter patch and
+  update its author date, or add a cover-letter note explaining the ordering.
+
+- [CONCERN] d8ed899cb600 — DT binding example not self-contained
+
+  The binding example references `&aoss_qmp` as a clock provider but does not
+  define it within the example block. This will fail dtbs_check on any real
+  DTS that includes the binding. The dt_binding_check target passes because it
+  only validates the schema, not phandle resolution.
+
+  File: Documentation/devicetree/bindings/arm/qcom,tgu.yaml, examples block
+
+  Suggestion: Add a minimal clock provider node inside the example block, or
+  use a placeholder label defined within the example.
+
+────────────────────────────────────────────────────────────────
+STYLE / MINOR
+────────────────────────────────────────────────────────────────
+
+- [MINOR] 833bbebd4d03 — Typo: "check arrary location" -> "check array location"
+  File: drivers/hwtracing/qcom/tgu.c, line ~48
+
+- [MINOR] 2c69080504f6 — TGU_LOCK/TGU_UNLOCK use do{}while(0) inside static
+  inline functions — redundant; plain statements suffice.
+  File: drivers/hwtracing/qcom/tgu.h, line ~155
+
+- [MINOR] 2c69080504f6 — TGU_LAR #define uses inconsistent tab alignment.
+  File: drivers/hwtracing/qcom/tgu.h, line ~11
+
+- [MINOR] c3c8fd06f6e8 — ASCII art comment typos: "prioroty" (x4) and
+  "registe" should be "priority" and "registers".
+  File: drivers/hwtracing/qcom/tgu.h, line ~38
+
+- [NIT] 33fa2414af58 — Missing trailing comma after TGU_COUNTER in enum.
+  File: drivers/hwtracing/qcom/tgu.h, line ~199
+
+- [NIT] 3b5fa8ce6111 — Extra blank line before enum operation_index in tgu.h.
+  File: drivers/hwtracing/qcom/tgu.h, line ~156
+
+================================================================
+
+---
+## Test Results
+
+| Test             | Result | Notes                                          |
+|------------------|--------|------------------------------------------------|
+| checkpatch       | WARN   | 2 warnings (MAINTAINERS) on patches 1 and 2    |
+| Build (W=1)      | PASS   | No errors or warnings in touched files         |
+| dt_binding_check | PASS   | No errors; yamllint not installed (skipped)    |
+| sparse           | SKIP   | sparse not available in this environment       |
+
+### checkpatch findings
+
+- 0001 (dt-bindings): WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+- 0002 (tgu driver): WARNING: added, moved or deleted file(s), does MAINTAINERS need updating?
+- 0003-0007: 0 errors, 0 warnings — clean.
+
+---
+## Per-Commit Reviews
+
+---
+## Commit d8ed899cb600: dt-bindings: arm: Add support for Qualcomm TGU trace
+
+**Summary**: Adds a new DT binding schema `Documentation/devicetree/bindings/arm/qcom,tgu.yaml`
+describing the Qualcomm Trigger Generation Unit AMBA peripheral.
+
+### Code Logic Maps
+
+No C code changed. Schema-only patch.
+
+Before: No TGU binding existed.
+After: New YAML schema with compatible = ["qcom,tgu","arm,primecell"], reg (1 entry),
+clocks/clock-names (apb_pclk), custom `select:` block to avoid matching all primecell nodes.
+Why: Required before the driver patch so DT validation tools can check TGU nodes.
+
+### DT / DT-Binding Notes
+
+- dt_binding_check: PASS (no errors, yamllint skipped).
+- compatible: "qcom,tgu" + "arm,primecell" — correct two-entry form; custom select: block
+  correctly scopes matching to nodes with qcom,tgu compatible.
+- reg: maxItems: 1 — correct.
+- clocks/clock-names: properly paired with const: apb_pclk.
+- additionalProperties: false — present, correct.
+- $id matches file path — correct.
+- maintainers: two valid Name <email> entries — correct.
+- MAINTAINERS file: NOT updated (checkpatch warning). Missing F: line for the new yaml.
+
+### Issues
+
+- **[CONCERN] DT / DT-Binding**: Example not self-contained.
+  The example references `clocks = <&aoss_qmp>` but `aoss_qmp` is not defined
+  within the example block. While dt_binding_check passes (it only validates
+  schema structure), dtbs_check on a real DTS would fail phandle resolution.
+  - File: `Documentation/devicetree/bindings/arm/qcom,tgu.yaml`, examples block
+  - Suggestion: Define a minimal clock provider node inside the example, e.g.:
+    `aoss_qmp: clock-controller { #clock-cells = <0>; };`
+
+- **[CONCERN] Documentation & ABI**: No MAINTAINERS entry added.
+  - File: `MAINTAINERS`
+  - Suggestion: Add entry with M:, S: Maintained, F: lines for the binding file.
+
+### Minor / Style
+
+- The description block uses `|` (literal block scalar) which is correct for
+  multi-line text with ASCII art — no issue.
+- "preprogrammed" in description is one word — acceptable.
+
+---
+## Commit 2c69080504f6: qcom-tgu: Add TGU driver
+
+**Summary**: Introduces the initial AMBA driver skeleton for the Qualcomm TGU:
+probe/remove, MMIO mapping, spinlock, a single `enable_tgu` sysfs attribute,
+and the TGU_LOCK/TGU_UNLOCK helpers in tgu.h.
+
+### Code Logic Maps
+
+tgu_probe():
+  1. devm_kzalloc drvdata
+  2. devm_ioremap_resource base
+  3. spin_lock_init
+  4. sysfs_create_groups (enable_tgu only)
+  5. drvdata->enabled = false
+  6. pm_runtime_put(&adev->dev)  [drops AMBA bus initial refcount]
+  7. return 0
+
+tgu_enable():
+  1. guard(spinlock)
+  2. drvdata->enabled = true
+  3. tgu_write_all_hw_regs() — writes TGU_CONTROL=1 between UNLOCK/LOCK
+  4. return 0
+
+tgu_disable() / tgu_do_disable():
+  tgu_disable: guard(spinlock), early-return if !enabled, call tgu_do_disable
+  tgu_do_disable: UNLOCK, write TGU_CONTROL=0, LOCK, enabled=false
+
+enable_tgu_store():
+  val=1: scoped_guard check !enabled (return -EBUSY if already on),
+         pm_runtime_resume_and_get, tgu_enable, pm_runtime_put on error
+  val=0: scoped_guard check enabled (return -EINVAL if already off),
+         tgu_disable, pm_runtime_put
+
+TGU_LOCK/TGU_UNLOCK (tgu.h):
+  Inline functions using do{}while(0) to write LAR register with mb() barriers.
+
+Before: No TGU driver existed.
+After: Minimal probe/enable/disable with sysfs control.
+Why: Foundation for subsequent feature patches.
+
+### Issues
+
+- **[BUG] Kernel API Usage**: pm_runtime_enable() never called.
+  Without pm_runtime_enable(), pm_runtime_resume_and_get() in enable_tgu_store()
+  returns -EACCES, making the driver non-functional. pm_runtime_disable() is
+  also missing from tgu_remove().
+  - File: `drivers/hwtracing/qcom/tgu.c`, line ~665 (probe end), tgu_remove()
+  - Suggestion: Add pm_runtime_enable(dev) before pm_runtime_put() in probe;
+    add pm_runtime_disable(dev) at start of tgu_remove().
+
+- **[CONCERN] Kconfig / Build**: CONFIG_QCOM_TGU missing dependency guards.
+  No `depends on ARCH_QCOM || COMPILE_TEST` or `depends on ARM_AMBA`.
+  drivers/Makefile uses unconditional `obj-y += hwtracing/qcom/`.
+  - File: `drivers/hwtracing/qcom/Kconfig` line ~7; `drivers/Makefile` line ~180
+  - Suggestion: Add depends on ARCH_QCOM || COMPILE_TEST and ARM_AMBA.
+
+- **[CONCERN] Documentation & ABI**: No MAINTAINERS entry for new driver directory.
+  - File: `MAINTAINERS`
+  - Suggestion: Add block covering drivers/hwtracing/qcom/ and ABI doc.
+
+### Minor / Style
+
+- TGU_LOCK/TGU_UNLOCK: do{}while(0) inside static inline functions is redundant.
+  Plain statements are sufficient.
+  File: `drivers/hwtracing/qcom/tgu.h`, line ~155
+
+- TGU_LAR #define tab alignment inconsistent with TGU_CONTROL.
+  File: `drivers/hwtracing/qcom/tgu.h`, line ~11
+
+- Commit message body is thin — does not explain why a new hwtracing/qcom/
+  directory is created rather than placing the driver under hwtracing/coresight/.
+  A brief rationale would help reviewers.
+
+### Positive notes
+
+- Good use of devm_* helpers throughout probe.
+- guard(spinlock) / scoped_guard usage is modern and correct.
+- suppress_bind_attrs = true is appropriate for a tracing driver.
+
+---
+## Commit c3c8fd06f6e8: qcom-tgu: Add signal priority support
+
+**Summary**: Adds per-step priority register sysfs attributes (step[0:7]_priority[0:3]/reg[0:17]),
+hardware register write loops in tgu_write_all_hw_regs(), and the value_table/priority
+allocation in tgu_probe(). Reads num_step and num_reg from DEVID hardware register.
+
+### Code Logic Maps
+
+calculate_array_location() [initial version]:
+  Linear index: op_index * num_step * num_reg + step * num_reg + reg
+  Returns signed int; no bounds checking.
+
+tgu_dataset_show() / tgu_dataset_store():
+  Retrieve tgu_attribute via container_of, compute array index, read/write
+  drvdata->value_table->priority[index].
+  Store: guard(spinlock) wraps index calculation and write.
+
+tgu_node_visible():
+  Returns SYSFS_GROUP_INVISIBLE if step_index >= num_step.
+  Returns 0 (invisible) if reg_num >= num_reg.
+  Returns attr->mode otherwise.
+
+tgu_write_all_hw_regs() [extended]:
+  Triple nested loop: step x priority x reg — writes priority registers.
+  Calls calculate_array_location() (no error check at this stage).
+  Writes TGU_CONTROL=1 after loops.
+
+tgu_set_reg_number() / tgu_set_steps():
+  Read DEVID register, extract fields via FIELD_GET/GENMASK.
+  Compute num_reg = ceil(num_sense_input * 4 / 32).
+
+tgu_probe() additions:
+  Call tgu_set_reg_number(), tgu_set_steps().
+  sysfs_create_groups() — BEFORE value_table allocation.
+  devm_kzalloc value_table, devm_kcalloc priority array.
+
+Before: No priority registers; tgu_write_all_hw_regs only wrote TGU_CONTROL.
+After: Full priority register write loop; sysfs attributes for all 8x4 groups.
+Why: Priority configuration is the first user-visible TGU feature.
+
+### Issues
+
+- **[BUG] Memory Management**: sysfs_create_groups() called before value_table allocated.
+  If userspace opens a priority sysfs file between sysfs_create_groups() and the
+  devm_kzalloc() for value_table, tgu_dataset_show/store dereferences NULL.
+  - File: `drivers/hwtracing/qcom/tgu.c`, line ~602
+  - Suggestion: Move sysfs_create_groups() to after all allocations complete.
+
+### Minor / Style
+
+- ASCII art comment in tgu.h has typos: "prioroty" (x4), "registe".
+  File: `drivers/hwtracing/qcom/tgu.h`, line ~38
+
+- PRIORITY_ATTRIBUTE_GROUP_INIT macro uses compound literal with const struct —
+  creative but unusual; a comment explaining the lifetime (static storage duration
+  for compound literals at file scope) would help future readers.
+
+### Positive notes
+
+- tgu_node_visible() correctly hides groups for steps/regs beyond hardware limits —
+  good use of is_visible to avoid exposing non-existent hardware registers.
+- FIELD_GET/GENMASK usage for register field extraction is correct kernel style.
+
+---
+## Commit 833bbebd4d03: qcom-tgu: Add TGU decode support
+
+**Summary**: Adds condition_decode registers (step[0:7]_condition_decode/reg[0:3]),
+refactors calculate_array_location() into a switch, introduces check_array_location()
+with error logging, changes tgu_write_all_hw_regs() return type to ssize_t, and
+makes tgu_enable() propagate the error.
+
+### Code Logic Maps
+
+calculate_array_location() [refactored]:
+  switch(operation_index):
+    PRIORITY0-3: op * num_step * num_reg + step * num_reg + reg
+    CONDITION_DECODE: step * num_condition_decode + reg
+    default: return -EINVAL
+
+check_array_location():
+  Calls calculate_array_location(); logs dev_err on -EINVAL; returns result.
+
+tgu_write_all_hw_regs() [return type changed to ssize_t]:
+  Priority loop (i,j,k): check_array_location; goto exit on -EINVAL.
+  Condition decode loop (i,j): check_array_location; goto exit on -EINVAL.
+  Write TGU_CONTROL=1.
+  exit: TGU_LOCK(); return index >= 0 ? 0 : -EINVAL.
+
+tgu_dataset_show/store [extended]:
+  switch on operation_index to dispatch to priority[] or condition_decode[].
+
+tgu_node_visible() [extended]:
+  switch on operation_index; CONDITION_DECODE: visible if reg_num < num_condition_decode.
+
+Before: Only priority registers handled; tgu_write_all_hw_regs returned void.
+After: condition_decode registers added; error propagation from write function.
+Why: Decode configuration is needed to combine priority inputs into a trigger condition.
+
+### Issues
+
+- **[BUG] Correctness**: Uninitialised `index` at `exit:` label in tgu_write_all_hw_regs().
+  `index` is declared as `int i, j, k, index;` with no initialiser. If num_step == 0
+  all loops are skipped and `index` is uninitialised when `return index >= 0 ? 0 : -EINVAL`
+  executes — undefined behaviour. Even in the normal case, `index` holds the last
+  array index computed (a valid non-negative value), so the ternary returns 0 correctly,
+  but this is fragile and misleading.
+  - File: `drivers/hwtracing/qcom/tgu.c`, line ~205 (declaration) and ~274 (return)
+  - Suggestion: Replace with `int rc = 0;`. On error: `rc = -EINVAL; goto exit;`.
+    At label: `TGU_LOCK(drvdata->base); return rc;`.
+
+- **[MINOR] Style**: Typo in dev_err message: "check arrary location" should be
+  "check array location".
+  - File: `drivers/hwtracing/qcom/tgu.c`, line ~48
+
+### Positive notes
+
+- Refactoring calculate_array_location() to a switch is cleaner than the previous
+  linear formula and makes adding new operation types straightforward.
+- Making tgu_enable() propagate tgu_write_all_hw_regs() errors is correct — the
+  previous version silently set enabled=true even if the hardware write failed.
+
+---
+## Commit 3b5fa8ce6111: qcom-tgu: Add support to configure next action
+
+**Summary**: Adds condition_select registers (step[0:7]_condition_select/reg[0:4]),
+where the last register in each step is named "default". Extends
+calculate_array_location(), tgu_dataset_show/store, tgu_node_visible(), and
+tgu_write_all_hw_regs() for the new type.
+num_condition_select = num_condition_decode + 1 (extra "default" register).
+
+### Code Logic Maps
+
+tgu_set_conditions() [extended]:
+  num_condition_decode = TGU_DEVID_CONDITIONS(devid)  [bits 2:0]
+  num_condition_select = num_condition_decode + 1      [extra default reg]
+
+tgu_node_visible() [extended for CONDITION_SELECT]:
+  If reg_num == num_condition_select - 1: attr->name = "default"  [MUTATION BUG]
+  If reg_num < num_condition_select: return attr->mode
+  else: return 0
+
+tgu_write_all_hw_regs() [extended]:
+  New loop for condition_select: writes CONDITION_SELECT_STEP(i,j) per step/reg.
+
+Before: No condition_select; tgu_node_visible handled priority and decode only.
+After: condition_select added with special "default" last register.
+Why: The select region determines what action is taken when a condition is met.
+
+### Issues
+
+- **[BUG] Correctness**: attr->name mutated at runtime in tgu_node_visible().
+  `attr->name = "default"` writes to a field of a struct attribute embedded in a
+  compound literal initialised as `const struct attribute_group`. On architectures
+  where compound literals with static storage duration are placed in read-only
+  sections (e.g. ARM64 with CONFIG_RODATA_FULL_DEFAULT_ENABLED), this write will
+  trigger a page-fault / kernel oops. Even where it does not crash, is_visible()
+  may be called multiple times (sysfs group refresh, hotplug), making the mutation
+  non-idempotent in a racy context.
+  - File: `drivers/hwtracing/qcom/tgu.c`, line ~170
+  - Suggestion: Add a STEP_SELECT_DEFAULT(step_index) macro that creates a
+    tgu_attribute with .attr.attr.name = "default" at compile time. Use it as
+    the last entry in STEP_SELECT_LIST() instead of reg4.
+
+### Minor / Style
+
+- Extra blank line before `enum operation_index` after the new macro block in tgu.h.
+  File: `drivers/hwtracing/qcom/tgu.h`, line ~156
+
+- STEP_SELECT_LIST hardcodes 5 entries (reg0-reg3 + NULL). If num_condition_decode
+  ever exceeds 4, the list will be too short. A comment noting the hardcoded
+  maximum would help.
+
+### Positive notes
+
+- The "default" register concept (last entry in select region) is well-motivated
+  and the sysfs naming is intuitive for users.
+
+---
+## Commit 33fa2414af58: qcom-tgu: Add timer/counter functionality for TGU
+
+**Summary**: Adds timer and counter register sysfs attributes
+(step[0:7]_timer/reg[0:1] and step[0:7]_counter/reg[0:1]). Reads timer/counter
+presence from CORESIGHT_DEVID2 register. Extends all dispatch paths.
+
+### Code Logic Maps
+
+tgu_set_timer_counter():
+  Read CORESIGHT_DEVID2 (0xfc0).
+  num_timers++  if TIMER0 field non-zero; num_timers++  if TIMER1 field non-zero.
+  num_counters++ if COUNTER0 field non-zero; num_counters++ if COUNTER1 field non-zero.
+  Result: num_timer in {0,1,2}, num_counter in {0,1,2}.
+
+tgu_node_visible() [extended for COUNTER/TIMER]:
+  Early return 0 (invisible) if num_counter/num_timer == 0.
+  Visible if reg_num < num_counter/num_timer.
+
+tgu_write_all_hw_regs() [extended]:
+  Two new loops: timer (TIMER_COMPARE_STEP) and counter (COUNTER_COMPARE_STEP).
+
+Before: No timer/counter support.
+After: Optional timer/counter registers exposed via sysfs when hardware present.
+Why: Timer/counter are optional TGU features used for counting occurrences.
+
+### Issues
+
+- **[MINOR] Kernel API Usage**: TGU_DEVID2_TIMER0/TIMER1/COUNTER0/COUNTER1 macros
+  extract multi-bit fields (6-bit, 5-bit, 6-bit, 6-bit) from DEVID2 and treat
+  any non-zero value as "present". This is correct for presence detection but
+  the field widths suggest these may encode a size or version, not just a boolean.
+  A comment explaining what a non-zero value means (e.g. "non-zero = timer present")
+  would clarify intent.
+  - File: `drivers/hwtracing/qcom/tgu.h`, line ~23
+
+- **[NIT] Style**: Missing trailing comma after TGU_COUNTER in enum operation_index.
+  File: `drivers/hwtracing/qcom/tgu.h`, line ~199
+
+### Positive notes
+
+- Correctly guards timer/counter sysfs visibility with num_timer/num_counter == 0
+  check, so hardware without these features shows no spurious sysfs entries.
+- devm_kcalloc for timer and counter arrays follows the established pattern.
+
+---
+## Commit efb8b437a854: qcom-tgu: Add reset node to initialize
+
+**Summary**: Adds a write-only `reset_tgu` sysfs attribute that zeroes all
+value_table arrays and re-initialises condition_decode entries to 0x1000000
+(NOT condition), then disables the TGU hardware.
+
+### Code Logic Maps
+
+reset_tgu_store():
+  1. kstrtoul(buf); reject if != 1.
+  2. spin_lock(&drvdata->lock).
+  3. If !enabled: spin_unlock, pm_runtime_resume_and_get, spin_lock.
+  4. tgu_do_disable(drvdata).
+  5. memset priority, condition_decode, condition_select, timer, counter to 0.
+  6. Loop: set condition_decode entries to 0x1000000 (NOT default).
+  7. spin_unlock.
+  8. pm_runtime_put(drvdata->dev).  [unconditional — BUG]
+  9. return size.
+
+Before: No way to reset TGU configuration to a known state.
+After: Single sysfs write resets all configuration and disables hardware.
+Why: Needed to reinitialise TGU between use cases without driver reload.
+
+### Issues
+
+- **[BUG] Locking & Concurrency**: TOCTOU race and PM refcount underflow.
+  The lock is dropped between step 2 and step 3 to allow pm_runtime_resume_and_get().
+  In the window between spin_unlock and spin_lock, another thread can call
+  enable_tgu_store(val=1), which sets enabled=true and programs hardware. When
+  reset_tgu_store re-acquires the lock, it calls tgu_do_disable() on a live session
+  without the caller knowing. More critically, pm_runtime_put() at step 8 is
+  unconditional: if the device was already enabled on entry (step 3 skipped
+  pm_runtime_resume_and_get), the put() decrements the refcount below the level
+  set by the caller of enable_tgu_store(), causing a PM refcount underflow and
+  potentially suspending the device while it is in use.
+  - File: `drivers/hwtracing/qcom/tgu.c`, line ~436
+  - Suggestion: Track whether pm_runtime_resume_and_get was called with a local
+    bool `need_put`. Only call pm_runtime_put() if need_put is true. Use
+    scoped_guard(spinlock) for the entire operation to eliminate the TOCTOU window,
+    or document clearly that reset is only safe when the TGU is not concurrently
+    being enabled.
+
+- **[MINOR] Error Handling**: The local variable `ret` is declared but only used
+  for pm_runtime_resume_and_get return value. If pm_runtime_resume_and_get fails,
+  the function returns `ret` (negative errno) — correct. But `ret` is not
+  initialised before the spin_lock block, so if the enabled path is taken and
+  pm_runtime_resume_and_get is skipped, `ret` is uninitialised at the point where
+  it would be used (it is not used in that path, but the declaration is confusing).
+  - File: `drivers/hwtracing/qcom/tgu.c`, line ~432
+  - Suggestion: Initialise `int ret = 0;` or move the declaration closer to use.
+
+### Minor / Style
+
+- The `size` parameter of reset_tgu_store is shadowed by a local `size_t size`
+  inside each `if (vt->...)` block. While scoped correctly in C, this is confusing
+  and checkpatch may warn. Rename the local variables (e.g. `clear_size`).
+  File: `drivers/hwtracing/qcom/tgu.c`, line ~455
+
+- The magic constant 0x1000000 for the NOT condition default value should be a
+  named macro (e.g. TGU_CONDITION_NOT_DEFAULT) with a comment explaining its
+  meaning.
+  File: `drivers/hwtracing/qcom/tgu.c`, line ~468

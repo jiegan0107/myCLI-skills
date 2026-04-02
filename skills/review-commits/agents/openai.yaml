@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Commits"
+  short_description: "Review git commits or kernel patch series"
+  default_prompt: "Use $review-commits to review the last 3 commits in /path/to/repo."

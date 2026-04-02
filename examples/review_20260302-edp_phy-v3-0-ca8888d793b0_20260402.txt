@@ -1,0 +1,549 @@
+# Review: phy: qcom: edp: Add DP/eDP switch for phys
+
+**Date**: 2026-04-02
+**Reviewer**: AI agent
+**Mode**: B — patch series
+**Repository**: /local/mnt/workspace/jiegan/code/linux-next
+**Commits / Patches**: 2
+**Branch**: v3_20260302_yongxing_mou_oss_qualcomm_com
+**Message-ID**: 20260302-edp_phy-v3-0-ca8888d793b0@oss.qualcomm.com
+**lore.kernel.org link**: https://lore.kernel.org/r/20260302-edp_phy-v3-0-ca8888d793b0@oss.qualcomm.com
+
+---
+================================================================
+## Overall Summary   <<<  VERDICT AT A GLANCE
+================================================================
+
+**Total commits reviewed**: 2
+**Bugs found**: 0
+**Concerns**: 3
+**Minor issues**: 7
+
+### Recommendation
+NEEDS FIXES
+
+### Key findings
+
+
+────────────────────────────────────────────────────────────────
+PATCH SCOPE VIOLATIONS
+────────────────────────────────────────────────────────────────
+
+- [CONCERN] b4e3bbeda9b7 — "phy: qcom: edp: Add eDP/DP mode switch support"
+
+  Patch 1 bundles two independent concerns: (a) a structural refactor that
+  splits `swing_pre_emph_cfg` into `dp_swing_pre_emph_cfg` +
+  `edp_swing_pre_emph_cfg` and adds runtime mode selection (new feature),
+  and (b) corrections to numeric values in `dp_pre_emp_hbr_rbr`,
+  `dp_swing_hbr_rbr`, `edp_pre_emp_hbr_rbr`, and `edp_pre_emp_hbr2_hbr3`
+  (independent bug fixes).  The table corrections are stable-eligible bug
+  fixes that should be backportable on their own, but they are entangled
+  with the structural refactor, making cherry-pick to stable trees
+  impractical.
+
+  3e.1 verification: "Fix incorrect swing/pre-emphasis table values AND add
+  runtime eDP/DP table selection" — cannot avoid "and" joining two independent
+  actions. Confirmed violation.
+
+  3e.4 series-level: patch 1 carries Fixes: + Cc: stable but also adds new
+  mode-switch infrastructure, making the table corrections impossible to
+  cherry-pick to stable trees without the structural refactor.
+
+  Suggestion: Split into two patches:
+  - Patch 1a: "phy: qcom: edp: Fix incorrect swing/pre-emphasis table values"
+    (table corrections only, with Fixes: + Cc: stable)
+  - Patch 1b: "phy: qcom: edp: Add eDP/DP mode switch support"
+    (structural refactor + per-platform table split, no Fixes:/stable needed)
+
+────────────────────────────────────────────────────────────────
+CORRECTNESS / SAFETY
+────────────────────────────────────────────────────────────────
+
+- [CONCERN] b4e3bbeda9b7 — "phy: qcom: edp: Add eDP/DP mode switch support"
+
+  `qcom_edp_set_voltages()` dereferences `cfg` (either
+  `edp->cfg->dp_swing_pre_emph_cfg` or `edp->cfg->edp_swing_pre_emph_cfg`)
+  without a NULL guard.  The old code had an explicit `if (!cfg) return 0`
+  that this patch removes.  All current platform configs populate both
+  fields, so there is no crash today, but any future platform that omits
+  one of the two pointers will silently dereference NULL.  The defensive
+  check should be restored.
+
+  File: `drivers/phy/qualcomm/phy-qcom-edp.c`, line ~313
+
+  Suggestion: Add `if (!cfg) return 0;` (or a WARN_ON variant) immediately
+  after the cfg assignment block, before the loop over lanes.
+
+- [CONCERN] ee41ee54b028 — "phy: qcom: edp: Add per-version LDO configuration callback"
+
+  `qcom_edp_phy_power_on()` calls `com_ldo_config()` before
+  `qcom_edp_phy_configure()` has necessarily been called, meaning
+  `edp->dp_opts.link_rate` and `edp->dp_opts.lanes` may still be
+  zero-initialised (from devm_kzalloc).  With link_rate=0 the condition
+  `link_rate <= 2700` is true, so the eDP path silently picks the
+  low-vdiff LDO value; with lanes=0 the TX1 LDO is written as 0x00.
+  This is a latent issue that existed partially before (the old
+  power_on path used a fixed ldo_config=0x0 for eDP), but the new
+  per-version callbacks make the behaviour link_rate-dependent, so the
+  risk is now higher.  The cover letter acknowledges that glymur/sc8280xp
+  have not been tested; this code path is exercised on those platforms.
+
+  File: `drivers/phy/qualcomm/phy-qcom-edp.c`, line ~1049
+
+  Suggestion: Document in a comment that com_ldo_config() in power_on
+  relies on dp_opts being pre-populated by configure(), and/or add a
+  WARN_ON(edp->dp_opts.link_rate == 0) to catch the uninitialized case
+  during development.
+
+────────────────────────────────────────────────────────────────
+STYLE / MINOR
+────────────────────────────────────────────────────────────────
+
+- [MINOR] ee41ee54b028 — Commit tag ordering wrong in both patches
+
+  Both patches place `Cc: stable@vger.kernel.org` before `Fixes:` in the
+  trailer block.  The upstream kernel convention (enforced by many
+  maintainers) is `Fixes:` first, then `Cc: stable@vger.kernel.org`.
+
+  Suggestion: Reorder to:
+    Fixes: f199223cb490 ("phy: qcom: Introduce new eDP PHY driver")
+    Cc: stable@vger.kernel.org
+
+- [MINOR] ee41ee54b028 — Typo in commit body: "accroding" → "according"
+
+  File: commit message body, line 3 of the body paragraph.
+
+  Suggestion: s/accroding/according/
+
+- [NIT] ee41ee54b028 — `ldo_config` declared as `u32` but register is 8-bit
+
+  All three ldo_config_vN functions declare `u32 ldo_config` but the
+  values written (0x00, 0x41, 0x51, 0x81, 0x91, 0xc1) fit in a u8, and
+  the register TXn_LDO_CONFIG is an 8-bit PHY register.  The old code
+  used `u8 ldo_config`.  Using u32 is not wrong (writel takes u32), but
+  it is inconsistent with the surrounding driver style.
+
+  File: `drivers/phy/qualcomm/phy-qcom-edp.c`, lines ~567, ~585, ~822
+
+  Suggestion: Change `u32 ldo_config` to `u8 ldo_config` in all three
+  functions to match the existing driver convention.
+
+- [MINOR] b4e3bbeda9b7 — Subject understates patch scope
+
+  Subject says "Add eDP/DP mode switch support" but the patch also corrects
+  existing table values (a bug fix). A reader scanning git log cannot tell
+  that register-value corrections are included. This is a secondary signal
+  that the patch should be split; if kept as-is the subject should reflect
+  both actions.
+
+- [MINOR] b4e3bbeda9b7 — Commit body describes two distinct problems
+
+  The body covers (1) missing mode-switch support (feature gap) and (2)
+  platform table mismatches and table corrections (bug fix). Per 3e.3, a
+  body that describes two separate problems is a direct indicator the patch
+  should be split.
+
+- [MINOR] b4e3bbeda9b7 — Body missing root-cause/symptom for Fixes: patch
+
+  The body says tables are corrected "based on the HPG specification" but
+  does not describe the observable failure (e.g. link training failure,
+  incorrect output swing). Fixes: patches should explain what breaks.
+
+- [MINOR] ee41ee54b028 — Body missing symptom for Fixes: patch
+
+  The body explains the mechanism (LDO value is version/rate-dependent)
+  but not the observable failure when the wrong value is programmed.
+  Suggestion: add one sentence, e.g. "Programming the wrong LDO value
+  causes incorrect TX output levels in eDP mode, leading to link training
+  failures."
+
+- [NIT] b4e3bbeda9b7 — Grammar errors in commit body
+
+  "use either the eDP or DP table" should be "uses"; "when enable the
+  platform" should be "when enabling the platform".
+
+================================================================
+
+---
+
+## Test Results
+
+| Test             | Result | Notes                                          |
+|------------------|--------|------------------------------------------------|
+| checkpatch       | PASS   | 0 errors, 0 warnings (both patches)            |
+| Build (W=1)      | PASS   | No errors or warnings in phy-qcom-edp.c        |
+| dt_binding_check | SKIP   | No .yaml binding files changed                 |
+| sparse           | SKIP   | sparse not available in this environment       |
+
+No checkpatch or build findings to list.
+
+---
+
+## Per-Commit Reviews
+
+---
+
+## Commit b4e3bbeda9b7: phy: qcom: edp: Add eDP/DP mode switch support
+
+**Summary**: Splits the single `swing_pre_emph_cfg` pointer in
+`qcom_edp_phy_cfg` into separate `dp_swing_pre_emph_cfg` and
+`edp_swing_pre_emph_cfg` pointers, corrects several table values based on
+the HPG, and updates `qcom_edp_set_voltages()` to select the right table
+at runtime based on `edp->is_edp`.
+
+### Code Logic Maps
+
+**qcom_edp_set_voltages() — control flow**
+```
+1. Select cfg: is_edp → edp_swing_pre_emph_cfg, else → dp_swing_pre_emph_cfg
+   (no NULL guard — see Issues)
+2. Loop over lanes: compute max v_level, p_level
+3. Select table row based on link_rate (<= 2700 → HBR/RBR, else → HBR2/HBR3)
+4. Look up swing/emph values; return -EINVAL if 0xff sentinel hit
+5. Call com_ldo_config() via ver_ops
+6. Write swing/emph to tx0 and tx1 registers
+7. Return 0
+```
+
+**Data flow**
+- Inputs: `edp->is_edp` (set by set_mode), `dp_opts->lanes`, `dp_opts->voltage[]`,
+  `dp_opts->pre[]`, `dp_opts->link_rate` (all from configure()).
+- Outputs: TXn_TX_DRV_LVL and TXn_TX_EMP_POST1_LVL register writes on tx0/tx1.
+- `v_level` and `p_level` are used as array indices into 4×4 tables; they are
+  bounded by the loop over `dp_opts->lanes` (max 4) and the 0xff sentinel check,
+  so no out-of-bounds access is possible.
+
+**Before-vs-after delta**
+- Old: single `swing_pre_emph_cfg` pointer; if NULL, return 0; if is_edp,
+  override with global `edp_phy_swing_pre_emph_cfg`.
+- New: two separate pointers per platform config; selected by is_edp flag;
+  no NULL guard.
+- Why: enables per-platform eDP and DP tables to coexist and be selected
+  at runtime based on the mode set via `phy_set_mode()`.
+
+**qcom_edp_phy_init() — delta**
+- Old: `if (edp->cfg->swing_pre_emph_cfg && !edp->is_edp)` aux_cfg[8] = 0xb7
+- New: `if (!edp->is_edp)` aux_cfg[8] = 0xb7
+- The old condition was gated on swing_pre_emph_cfg being non-NULL (i.e. only
+  platforms that had a cfg set). The new condition applies to all DP-mode
+  platforms unconditionally. Since all platforms now have dp_swing_pre_emph_cfg
+  set, the effective behaviour is the same, and the TODO comment is correctly
+  removed.
+
+### Issues
+
+- **[CONCERN] Correctness — missing NULL guard on cfg pointer**
+  - After removing the old `if (!cfg) return 0` guard, `cfg` is used
+    unconditionally. All current platform structs populate both pointers,
+    but there is no compile-time or runtime enforcement. A future platform
+    that omits `dp_swing_pre_emph_cfg` or `edp_swing_pre_emph_cfg` will
+    crash with a NULL dereference.
+  - File: `drivers/phy/qualcomm/phy-qcom-edp.c`, line ~313
+  - Suggestion: Restore a NULL check:
+    `if (!cfg) return 0;` or `if (WARN_ON(!cfg)) return -EINVAL;`
+    immediately after the cfg assignment.
+
+### Minor / Style
+
+- **[MINOR] Commit tag ordering**: `Cc: stable@vger.kernel.org` appears before
+  `Fixes:` in the trailer block. Kernel convention requires `Fixes:` first.
+
+### Positive notes
+
+- Table value corrections (dp_pre_emp_hbr_rbr, edp_pre_emp_hbr_rbr,
+  edp_pre_emp_hbr2_hbr3) are clearly motivated by the HPG and the cover
+  letter cross-references the earlier discussion thread.
+- Renaming `edp_phy_swing_pre_emph_cfg_v5` → `edp_phy_swing_pre_emph_cfg_v3`
+  and introducing `dp_phy_swing_pre_emph_cfg_v8` for glymur is a clean
+  separation of per-version tables.
+- The simplification of the `aux_cfg[8]` condition (removing the TODO) is
+  correct and well-motivated.
+
+---
+
+## Commit ee41ee54b028: phy: qcom: edp: Add per-version LDO configuration callback
+
+**Summary**: Introduces a `com_ldo_config` callback in `phy_ver_ops` with
+three implementations (v3/v4/v6) that program TXn_LDO_CONFIG based on PHY
+version, eDP/DP mode, link rate, and lane count; replaces the previous
+fixed `ldo_config = is_edp ? 0x0 : 0x1` logic in both `qcom_edp_set_voltages`
+and `qcom_edp_phy_power_on`; adds `qcom_edp_phy_ops_v3` for SC7280.
+
+### Code Logic Maps
+
+**qcom_edp_ldo_config_v3/v4/v6() — control flow (identical structure)**
+```
+1. Read dp_opts->link_rate and dp_opts->lanes from edp->dp_opts
+2. if !is_edp:           ldo_config = 0x0
+   elif link_rate<=2700: ldo_config = <low-vdiff>  (v3:0x81, v4:0xc1, v6:0x51)
+   else:                 ldo_config = <high-vdiff> (v3:0x41, v4:0x81, v6:0x91)
+3. writel(ldo_config, tx0 + TXn_LDO_CONFIG)
+4. writel(lanes>2 ? ldo_config : 0x00, tx1 + TXn_LDO_CONFIG)
+5. return 0
+```
+
+**Data flow**
+- Inputs: `edp->is_edp`, `edp->dp_opts.link_rate`, `edp->dp_opts.lanes`
+- Outputs: TXn_LDO_CONFIG register writes on tx0 and tx1
+- TX1 LDO is only enabled when lane count > 2 (4-lane mode), matching the
+  HPG requirement noted in the v3 changelog.
+
+**State / lifecycle**
+- `com_ldo_config` is called from two sites:
+  1. `qcom_edp_phy_power_on()` — before voltage/swing configuration
+  2. `qcom_edp_set_voltages()` — on every configure() call with set_voltages=1
+- At site 1, `dp_opts` may be zero-initialised if `configure()` has not yet
+  been called (see Issues).
+- At site 2, `dp_opts` is guaranteed populated because configure() copies
+  opts into edp->dp_opts before calling set_voltages.
+
+**Call graph**
+```
+qcom_edp_phy_power_on()
+  +-- edp->cfg->ver_ops->com_ldo_config(edp)   [new]
+        +-- qcom_edp_ldo_config_v3/v4/v6()
+
+qcom_edp_phy_configure()
+  +-- qcom_edp_set_voltages()
+        +-- edp->cfg->ver_ops->com_ldo_config(edp)   [new]
+              +-- qcom_edp_ldo_config_v3/v4/v6()
+```
+
+**Before-vs-after delta**
+- Old (set_voltages): `ldo_config = edp->is_edp ? 0x0 : 0x1`; wrote same
+  value to both tx0 and tx1 unconditionally.
+- Old (power_on): fixed 0x0; set to 0x1 only if swing_pre_emph_cfg non-NULL
+  and !is_edp; wrote same value to both tx0 and tx1.
+- New: per-version callback; eDP path selects value based on link_rate;
+  TX1 only written non-zero when lanes > 2.
+- Why: eDP LDO programming is PHY-version-specific and link-rate-dependent
+  per the HPG; the old fixed values were incorrect for eDP mode.
+
+### Issues
+
+- **[CONCERN] Correctness — com_ldo_config called in power_on with potentially
+  uninitialised dp_opts**
+  - `qcom_edp_phy_power_on()` calls `com_ldo_config()` which reads
+    `edp->dp_opts.link_rate` and `edp->dp_opts.lanes`. If `configure()`
+    has not been called before `power_on()`, these fields are 0 (from
+    devm_kzalloc). With link_rate=0 the eDP path picks the low-vdiff
+    LDO value; with lanes=0 TX1 gets 0x00. This may not match the
+    hardware expectation at power-on time.
+  - The old code wrote a fixed 0x0 (eDP) or 0x1 (DP) regardless of
+    link_rate, so the new code changes observable behaviour at power_on
+    for eDP platforms.
+  - File: `drivers/phy/qualcomm/phy-qcom-edp.c`, line ~1049
+  - Suggestion: Either document that configure() must precede power_on()
+    and add a WARN_ON(edp->dp_opts.link_rate == 0) to enforce it, or use
+    a safe default in the ldo_config callbacks when link_rate == 0.
+
+### Minor / Style
+
+- **[MINOR] Commit tag ordering**: `Cc: stable@vger.kernel.org` appears before
+  `Fixes:` in the trailer block. Kernel convention requires `Fixes:` first.
+  Suggestion: Reorder to `Fixes:` then `Cc: stable@vger.kernel.org`.
+
+- **[MINOR] Typo in commit body**: "accroding" should be "according".
+  File: commit message body, paragraph 1.
+
+- **[NIT] `u32 ldo_config` vs driver convention**: The three ldo_config_vN
+  functions use `u32 ldo_config` but the register is 8-bit and the old
+  code used `u8 ldo_config`. `writel()` accepts u32 so this is not a bug,
+  but it is inconsistent with the surrounding style.
+  File: `drivers/phy/qualcomm/phy-qcom-edp.c`, lines ~567, ~585, ~822
+  Suggestion: Use `u8 ldo_config` to match the existing driver convention.
+
+### Positive notes
+
+- The three-way split (v3/v4/v6) cleanly captures per-version LDO
+  differences without code duplication.
+- Reusing `qcom_edp_ldo_config_v6` for `qcom_edp_phy_ops_v8` (glymur) is
+  correct and avoids an unnecessary fourth variant.
+- The TX1 lane-count guard (`lanes > 2 ? ldo_config : 0x00`) correctly
+  implements the "only enable TX1 LDO when lane count > 2" requirement.
+- `qcom_edp_phy_ops_v3` reuses all v4 callbacks except `com_ldo_config`,
+  which is the minimal and correct approach.
+- Patch 2 has Reviewed-by and Tested-by from two independent reviewers
+  (Dmitry Baryshkov, Konrad Dybcio) on real hardware (SC8280XP X13s).
+
+---
+
+
+---
+
+## Patch Scope Review (Step 3e) — Full Re-check with Updated Skill
+
+---
+
+### 3e.1 Single-Responsibility Rule — one patch = one purpose
+
+**Verification method**: write one imperative sentence that fully describes
+every change in the diff.  If "and" is needed to join two independent
+actions, the patch violates the rule.
+
+#### Patch 1 — b4e3bbeda9b7
+
+Attempt: "Fix incorrect swing/pre-emphasis table values AND add runtime
+eDP/DP table selection by splitting swing_pre_emph_cfg into two per-mode
+pointers."
+
+Cannot avoid "and" joining two independent actions.  FAIL.
+
+**[CONCERN] Patch Scope — Patch 1 bundles two independent changes:**
+
+**Change A — Table-value bug fixes** (stable-eligible, independent):
+- dp_swing_hbr_rbr[0][0]: 0x08 -> 0x07
+- dp_pre_emp_hbr_rbr[0][1]: 0x0d -> 0x0e; [0][2]: 0x14 -> 0x15; [3][0]: 0x03 -> 0x04
+- edp_pre_emp_hbr_rbr[0][1]: 0x12 -> 0x11
+- edp_pre_emp_hbr2_hbr3: four values changed
+These corrections fix wrong register values that exist in the current
+driver regardless of whether mode-switching is added.  They are
+independently bisectable and stable-eligible on their own.
+
+**Change B — Mode-switch infrastructure** (new feature, not stable-eligible):
+- Split swing_pre_emph_cfg -> dp_swing_pre_emph_cfg + edp_swing_pre_emph_cfg
+- Runtime table selection in qcom_edp_set_voltages() via edp->is_edp
+- Rename edp_phy_swing_pre_emph_cfg_v5 -> edp_phy_swing_pre_emph_cfg_v3,
+  add edp_swing_hbr2_hbr3_v3, add dp_phy_swing_pre_emph_cfg_v8
+- Simplify aux_cfg[8] condition in qcom_edp_phy_init() (remove TODO)
+- Update all platform cfg structs to use the two new pointers
+This is new infrastructure that enables per-platform eDP/DP table
+coexistence.  It is a feature addition, not a bug fix.
+
+**Suggested split:**
+- Patch 1a: "phy: qcom: edp: Fix incorrect swing/pre-emphasis table values"
+  -- Change A only.  Carries Fixes: f199223cb490 + Cc: stable@vger.kernel.org.
+  Cleanly backportable to stable without carrying any new infrastructure.
+- Patch 1b: "phy: qcom: edp: Add eDP/DP mode switch support"
+  -- Change B only.  No Fixes: / Cc: stable needed (new feature).
+
+#### Patch 2 — ee41ee54b028
+
+Attempt: "Add a per-version com_ldo_config callback to phy_ver_ops and
+implement it for v3/v4/v6 to correctly program TXn_LDO_CONFIG based on
+PHY version, mode, and link rate."
+
+The "and" here joins the declaration of the callback and its
+implementations — tightly coupled parts of one logical change.
+Adding qcom_edp_phy_ops_v3 for SC7280 is a direct consequence of the
+callback (SC7280 needs a different LDO value, which is the whole point).
+PASS — single purpose.
+
+---
+
+### 3e.2 Subject Line Quality
+
+#### Patch 1 — b4e3bbeda9b7
+
+Subject: phy: qcom: edp: Add eDP/DP mode switch support
+
+- [PASS] Imperative mood, <= 72 characters, no trailing period, correct prefix.
+- [MINOR] Subject understates the diff scope.  The diff also corrects
+  pre-existing table values (Change A above) — a reader scanning git log
+  has no indication that register-value bug fixes are included.  This is a
+  secondary signal of the single-responsibility violation: a subject that
+  cannot describe all changes without adding "and fix table values" confirms
+  the patch is doing two things.
+
+#### Patch 2 — ee41ee54b028
+
+Subject: phy: qcom: edp: Add per-version LDO configuration callback
+
+- [PASS] Imperative mood, <= 72 characters, no trailing period, correct prefix.
+- [PASS] Subject accurately reflects the diff: one callback added,
+  implemented, and wired in.
+
+---
+
+### 3e.3 Commit Body Quality — Mandatory Per-Commit Checks
+
+#### Patch 1 — b4e3bbeda9b7
+
+**Check 1 — Two-problems test:**
+The body describes two distinct problems:
+(1) "The current driver doesn't fully support every combo PHY mode" — feature gap.
+(2) "some platforms mismatch between the mode and the table" + "Clean up and
+correct the tables" — pre-existing bug.
+Two problems in one body confirms single-responsibility violation.  FAIL.
+
+**Check 2 — Subject vs. diff cross-check:**
+Subject says "Add eDP/DP mode switch support"; diff also contains table-value
+corrections not mentioned in the subject.  FAIL — subject understates scope.
+
+**Check 3 — Fixes: symptom check:**
+Fixes: tag is present.  The body does not describe:
+(a) Observable failure/symptom — what does the user see when the wrong table
+    value is used? (e.g. link training failure, incorrect output swing)
+(b) Root cause — why were the values wrong? (HPG mismatch stated but not explained)
+(c) Resolution — "correct the tables based on the HPG specification" is
+    present but vague.
+FAIL — [MINOR] missing observable symptom and root cause.
+
+**Check 4 — Grammar and spelling:**
+- [NIT] "use either the eDP or DP table" -> "uses either"
+- [NIT] "when enable the platform" -> "when enabling the platform"
+
+**Check 5 — Tag ordering:**
+Cc: stable@vger.kernel.org appears before Fixes:.
+Correct order: Fixes: first, then Cc: stable@vger.kernel.org.
+FAIL — [MINOR].
+
+**Check 6 — Fixes: format:**
+Fixes: f199223cb490 ("phy: qcom: Introduce new eDP PHY driver")
+Hash is 12 characters, subject is quoted.  PASS.
+
+#### Patch 2 — ee41ee54b028
+
+**Check 1 — Two-problems test:**
+Body describes one problem: LDO setting is PHY-version- and link-rate-dependent,
+the old fixed value was wrong.  SC7280 note is a direct consequence of the same
+root cause.  PASS.
+
+**Check 2 — Subject vs. diff cross-check:**
+Subject "Add per-version LDO configuration callback" covers all diff changes.
+PASS.
+
+**Check 3 — Fixes: symptom check:**
+Fixes: tag is present.  The body explains the mechanism ("depends on the
+PHY version, instead of being a simple 0x0 or 0x01") but does not describe:
+(a) Observable failure/symptom — what breaks when the wrong LDO value is
+    programmed? (e.g. eDP link training failure, incorrect TX output levels)
+(b) Root cause — stated implicitly (fixed value ignores version/rate) but
+    not explicitly called out.
+(c) Resolution — present ("Introduce the com_ldo_config callback").
+FAIL — [MINOR] missing observable symptom.
+
+**Check 4 — Grammar and spelling:**
+- [NIT] "accroding" -> "according"
+
+**Check 5 — Tag ordering:**
+Cc: stable@vger.kernel.org appears before Fixes:.
+FAIL — [MINOR].
+
+**Check 6 — Fixes: format:**
+Fixes: f199223cb490 ("phy: qcom: Introduce new eDP PHY driver")
+Hash is 12 characters, subject is quoted.  PASS.
+
+---
+
+### 3e.4 Series-Level Scope Check
+
+- **Bisectability**: PASS.  After patch 1 alone the tree builds and the
+  driver functions (with the old fixed LDO logic still in place).  Patch 2
+  applies cleanly on top in the correct dependency order.
+
+- **Dependency order**: PASS.  Patch 2 depends on the dp_swing_pre_emph_cfg
+  / edp_swing_pre_emph_cfg split introduced in patch 1.  Correct order.
+
+- **Mixes Fixes: patches with new-feature patches**: [CONCERN].
+  Patch 1 carries Fixes: f199223cb490 + Cc: stable@vger.kernel.org but
+  also adds new mode-switch infrastructure (Change B above).  Per 3e.4,
+  bug-fixes should be sent separately so stable trees can pick them up
+  without carrying new features.  As currently structured, stable
+  maintainers cannot cherry-pick the table corrections from patch 1 without
+  also taking the structural refactor, which is too large a change for
+  stable.  This is resolved by the patch 1a/1b split suggested in 3e.1.
+
+- **Both patches reference the same Fixes commit** (f199223cb490): PASS.
+  They fix different bugs introduced by the same original commit (wrong
+  table values vs. wrong LDO values).  Acceptable.

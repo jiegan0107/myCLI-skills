@@ -1,15 +1,17 @@
 ---
 name: review-commits
 description: >
-  Multi-phase Linux kernel code review for local commits (Mode A) or lore.kernel.org
-  patch series fetched with b4 (Mode B). Runs checkpatch, W=1 build, dt_binding_check,
-  and sparse; audits kernel coding style (indentation, naming, macros, error paths);
-  maps per-function control-flow, data-flow, and state lifecycle; checks DT/DT-binding
-  schemas, DTS nodes, and driver of_match consistency; enforces the single-responsibility
-  rule, subject-line quality, and series bisectability. Findings tagged [BUG], [CONCERN],
-  [MINOR], or [NIT]; saved as a structured review file with an Overall Summary block
-  followed by per-commit detail sections. Use when asked to review recent commits,
-  a patch series, a pull request diff, or a kernel patch Message-ID from lore.kernel.org.
+  Multi-phase Linux kernel code review for local commits (Mode A), lore.kernel.org
+  patch series fetched with b4 (Mode B), or a single source file (Mode C). Runs
+  checkpatch, W=1 build, dt_binding_check, and sparse; audits kernel coding style
+  (indentation, naming, macros, error paths); maps per-function control-flow,
+  data-flow, and state lifecycle; checks DT/DT-binding schemas, DTS nodes, and
+  driver of_match consistency; enforces the single-responsibility rule, subject-line
+  quality, and series bisectability. Findings tagged [BUG], [CONCERN], [MINOR], or
+  [NIT]; saved as a structured review file with an Overall Summary block followed by
+  per-file or per-commit detail sections. Use when asked to review recent commits, a
+  patch series, a pull request diff, a kernel patch Message-ID from lore.kernel.org,
+  or a specific source file in a project.
 author: "Jie Gan <jiegan@qti.qualcomm.com>"
 ---
 
@@ -27,6 +29,7 @@ tagged findings and an overall recommendation.
 |---|---|
 | `Project path` + `Number of commits` | **A** — review last N local commits |
 | `Project path` + `Message-ID` | **B** — fetch, apply, and review a lore.kernel.org patch series |
+| `Project path` + `File path` | **C** — review a single source file as-is in the working tree |
 
 If neither is clear, ask the user before proceeding.
 
@@ -70,6 +73,24 @@ Confirm with `git log --oneline HEAD~<N>..HEAD`, then clean up:
 ```bash
 rm -f ./<slug>.mbx ./<slug>.cover 2>/dev/null || true
 ```
+
+### Mode C
+
+```bash
+cd <project_path>
+cat <file_path>          # read the full file
+wc -l <file_path>        # note total line count
+```
+
+- `<file_path>` may be absolute or relative to `<project_path>`.
+- If the file does not exist, report the error and **stop**.
+- Read the file in full before proceeding to Step 2.
+- Also read related headers, Kconfig, and Makefile entries that reference
+  the file (same rules as Step 2 for Mode A/B).
+- There are no commits to review; skip all commit-message and patch-scope
+  checks (Steps 3e, 4 Patch Scope column).  Apply all other review steps
+  (coding style, logic mapping, DT/DT-binding if applicable, build, sparse).
+- The review is structured as a single **per-file block** (not per-commit).
 
 ## Step 2 — Gather Context
 
@@ -614,6 +635,48 @@ Evaluate every commit against these categories (cross-reference test results):
 
 ### Per-commit block
 
+### Per-file block (Mode C only)
+
+Use this block instead of the per-commit block when reviewing a single file.
+
+```
+## File <relative/path/to/file>
+
+**Summary**: One sentence describing what the file does.
+
+### Code Logic Maps
+<control-flow summary per function from Step 3c.1>
+<data-flow notes from Step 3c.2 — highlight any unvalidated inputs>
+<state/lifecycle notes from Step 3c.3 — if applicable>
+<call-graph notes from Step 3c.4 — if applicable>
+
+### DT / DT-Binding Notes
+<only present when the file is a .yaml binding, .dts/.dtsi, or contains of_match>
+- Schema validation result (dt_binding_check / dtbs_check)
+- compatible string correctness and vendor-prefix check
+- Property definitions: types, constraints, descriptions, examples
+- reg / interrupts / clocks / resets / gpio / pinctrl cross-check
+- DTS node naming, unit-address, formatting
+- Driver of_match consistency and deprecated API usage
+- MAINTAINERS / vendor-prefixes.yaml coverage
+
+### Issues
+- **[SEVERITY] Category**: Description.
+  - File: `path/to/file.c`, line ~N
+  - Suggestion: ...
+
+### Minor / Style
+- ...
+
+### Positive notes (optional)
+- ...
+```
+
+The **Overall Summary** block for Mode C uses the same format as Mode A/B but
+replaces "Total commits reviewed" with "Files reviewed: 1" and omits the
+patch-scope and commit-message finding categories.
+
+
 ```
 ## Commit <short-hash>: <subject>
 
@@ -717,6 +780,9 @@ READY TO APPLY | NEEDS FIXES | NEEDS DISCUSSION
 **Filename**:
 - Mode A: `review_<repo-basename>_last<N>_<YYYYMMDD>.txt`
 - Mode B: `review_<message-id-slug>_<YYYYMMDD>.txt`
+- Mode C: `review_<repo-basename>_<filename-no-ext>_<YYYYMMDD>.txt`
+  where `<filename-no-ext>` is the basename of the reviewed file with its
+  extension stripped (e.g. reviewing `iris_vpu3x.c` → `review_linux-next_iris_vpu3x_20260403.txt`).
 
 **Save location**: always `<project_path>` — the project directory supplied by
 the user.  Never save to the current working directory, the home directory, or
@@ -729,16 +795,17 @@ the header block, so the reader sees the verdict and key findings without
 scrolling.  The detailed per-commit reviews and test results follow.
 
 ```markdown
-# Review: <series subject or "Last N commits in <repo>">
+# Review: <series subject or "Last N commits in <repo>" or "File <path> in <repo>">
 
 **Date**: YYYY-MM-DD
 **Reviewer**: AI agent (qgenie)
-**Mode**: A — local commits  |  B — patch series
+**Mode**: A — local commits  |  B — patch series  |  C — single file
 **Repository**: <project_path>
-**Commits / Patches**: N
+**Commits / Patches**: N  (omit for Mode C)
 **Branch** (Mode B only): review/<slug>
 **Message-ID** (Mode B only): <message-id>
 **lore.kernel.org link** (Mode B only): https://lore.kernel.org/r/<message-id>
+**File** (Mode C only): <relative/path/to/file>
 
 ---
 ================================================================

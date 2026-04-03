@@ -293,6 +293,16 @@ reference counts, state flags):
   exit path.
 - Confirm no state transition is reachable from an uninitialised or
   already-freed object.
+- **For every boolean/enum flag that gates an error return or a branch**:
+  trace all writers of that flag across all functions and files, and confirm
+  whether the flag can actually be in the assumed state at the call site in
+  question.  Paired prepare/unprepare functions often enforce invariants
+  implicitly (e.g. a store function returning `-EBUSY` while a flag is set),
+  making certain error conditions unreachable.  Document the invariant
+  explicitly rather than assuming the worst.  Then apply the two-part gate
+  from Step 4: (1) is the condition reachable? (2) if reachable, is the
+  resulting behavior actually harmful?  A no-op write or intentional omission
+  managed by a per-instance field elsewhere is not a bug.
 
 ### 3c.4 Interaction Picture
 
@@ -615,7 +625,31 @@ When reviewing a multi-patch series:
 
 ## Step 4 — Review Each Commit
 
-Evaluate every commit against these categories (cross-reference test results):
+Evaluate every commit against these categories (cross-reference test results).
+
+**Mandatory pre-filing gate — two-part reachability + harm check**: Before
+writing up any `[BUG]` or `[CONCERN]` finding on an error path, missing state
+update, or branch condition, pass **both** gates below.  Failing either gate
+means the finding must be dismissed.
+
+*Gate 1 — Reachability*: Answer: *"What is the exact call sequence that puts
+the system into the bad state?"*  Trace all writers of every flag or variable
+involved, across all functions and files, and confirm the triggering condition
+is actually reachable at that call site given the locks held and state
+invariants enforced by the surrounding code (e.g. a store function returning
+`-EBUSY` while a flag is set makes the corresponding error path unreachable).
+If you cannot construct a concrete triggering scenario, dismiss the finding and
+document the invariant that prevents it as a positive note instead.
+
+*Gate 2 — Harm*: Even when the condition is reachable, ask: *"Does the
+resulting behavior actually cause incorrect or harmful outcomes?"*  A no-op
+write to an already-`false` flag, a safe cleanup on an error path, or an
+omitted state update that is intentionally managed by a different per-instance
+field are not bugs.  Consider whether the omission is deliberate: does the
+subsystem manage equivalent state elsewhere (e.g. a per-instance flag vs. a
+shared flag)?  Only file the finding if you can show the fallthrough or missing
+update leads to genuinely incorrect behavior — not merely to code that looks
+asymmetric or incomplete.
 
 | Category | Key questions |
 |---|---|

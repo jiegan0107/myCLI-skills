@@ -821,6 +821,28 @@ heredoc for the full review — it stalls when the content exceeds ~200 lines.
 3. **Append** each per-commit review block one at a time (one `apply_patch`
    call per commit) using the same `*** Update File:` append pattern.
 
+3b. **Summarize & compress after each commit (mandatory — context-window hygiene)**
+
+   After appending a commit's review block to the file (step 3), immediately
+   discard the full diff and all intermediate analysis for that commit from
+   working memory.  Retain only a one-sentence summary of the commit and a
+   compact bullet list of its findings (severity tag + one-line description).
+   This compressed record is sufficient to write the Overall Summary later.
+
+   **Why**: kernel patch diffs, checkpatch output, and code-logic maps are
+   large.  Keeping them in context across multiple commits exhausts the model's
+   context window.  Writing to disk and compressing in-memory state after each
+   commit keeps the working context small regardless of series length.
+
+   **Compressed record format** (keep in memory, never write to file):
+   ```
+   <hash> "<subject>"
+   - [SEV] <one-line finding>
+   - [SEV] <one-line finding>
+   ```
+
+   Discard everything else for that commit before moving to the next one.
+
 4. **Confirm** after all chunks are written:
    ```bash
    echo "Review saved to: $(realpath <filename>)"
@@ -830,11 +852,14 @@ heredoc for the full review — it stalls when the content exceeds ~200 lines.
 **Key rules**:
 - Each `apply_patch` chunk should be ≤ 150 lines of new content.
 - Always use 2 lines of existing context before the `+` lines so the patch
-  applies cleanly.
+   applies cleanly.
 - Do NOT use shell heredocs (`cat << 'EOF'`) for the review file — they time
-  out on large content.
+   out on large content.
 - Do NOT use `printf` or `echo` loops — they are slow and error-prone.
 - `apply_patch` is the only approved method for writing the review file.
+- After writing each commit's block, compress its in-memory representation
+  to the one-sentence + bullet format from step 3b.  Never carry full diffs,
+  checkpatch output, or code-logic maps across commit boundaries.
 
 ## Notes
 

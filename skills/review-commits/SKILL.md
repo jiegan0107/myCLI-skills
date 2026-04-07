@@ -811,6 +811,11 @@ READY TO APPLY | NEEDS FIXES | NEEDS DISCUSSION
 
 ## Step 6 — Save the Review
 
+**MANDATORY**: Writing the review file is not optional.  Every review run
+MUST produce a saved file.  Do not output the review only to the terminal
+and skip the file.  The file is the primary deliverable — the terminal
+output is secondary.  If the file is not written, the review is incomplete.
+
 **Filename**:
 - Mode A: `review_<repo-basename>_last<N>_<YYYYMMDD>.txt`
 - Mode B: `review_<message-id-slug>_<YYYYMMDD>.txt`
@@ -887,40 +892,25 @@ READY TO APPLY | NEEDS FIXES | NEEDS DISCUSSION
 ## Per-Commit Reviews
 ```
 
-**Writing strategy — chunked `apply_patch` (mandatory)**
+**Writing strategy — chunked Write + Edit (mandatory)**
 
-Large review files MUST be written in multiple chunks using `apply_patch` to
-avoid shell heredoc timeouts.  Never use a single `cat > file << 'REVIEW'`
-heredoc for the full review — it stalls when the content exceeds ~200 lines.
+Large review files MUST be written in multiple chunks to keep each tool call
+manageable.  Never write the entire review in a single tool call.
 
 **Procedure**:
 
-1. **Create** the file with the header + overall-summary block using
-   `apply_patch` `*** Add File:`:
+1. **Create** the file with the header + overall-summary block using the
+   `Write` tool (≤ 80 lines of content):
 
-   ```
-   *** Begin Patch
-   *** Add File: <project_path>/<filename>
-   +<header line 1>
-   +<header line 2>
-   +...  (overall summary section only, ~60-80 lines max per chunk)
-   *** End Patch
-   ```
+   - Write only the header block and the Overall Summary section.
+   - Do NOT include Test Results or per-commit blocks in this first call.
 
-2. **Append** the Test Results section using a second `apply_patch`
-   `*** Update File:` hunk that adds lines at the end of the file:
+2. **Append** the Test Results section using the `Edit` tool, adding lines
+   at the end of the file (replace the last line with itself + new content).
 
-   ```
-   *** Begin Patch
-   *** Update File: <project_path>/<filename>
-   @@ (append test results)
-    <last 2 lines already in file>
-   +<test results content>
-   *** End Patch
-   ```
-
-3. **Append** each per-commit review block one at a time (one `apply_patch`
-   call per commit) using the same `*** Update File:` append pattern.
+3. **Append** each per-commit review block one at a time using the `Edit`
+   tool (one call per commit), replacing the last line of the current file
+   with itself + the new block.
 
 3b. **Summarize & compress after each commit (mandatory — context-window hygiene)**
 
@@ -946,18 +936,21 @@ heredoc for the full review — it stalls when the content exceeds ~200 lines.
 
 4. **Confirm** after all chunks are written:
    ```bash
-   echo "Review saved to: $(realpath <filename>)"
-   wc -l <filename>
+   wc -l <project_path>/<filename>
    ```
 
+5. **Print the Overall Summary to the terminal** after confirming the file.
+   Copy the entire Overall Summary block (from the first `===` banner to the
+   closing `===` banner) verbatim to terminal output so the user can see the
+   verdict and key findings without opening the file.  Follow it with the
+   saved file path on its own line.
+
 **Key rules**:
-- Each `apply_patch` chunk should be ≤ 150 lines of new content.
-- Always use 2 lines of existing context before the `+` lines so the patch
-   applies cleanly.
-- Do NOT use shell heredocs (`cat << 'EOF'`) for the review file — they time
-   out on large content.
-- Do NOT use `printf` or `echo` loops — they are slow and error-prone.
-- `apply_patch` is the only approved method for writing the review file.
+- Each `Write` or `Edit` chunk should add ≤ 100 lines of new content.
+- Use the `Write` tool only for the initial file creation (step 1).
+- Use the `Edit` tool for all subsequent appends (steps 2 and 3).
+- Do NOT use shell heredocs, `printf`, or `echo` loops to write the file.
+- Do NOT use the Bash tool to write the review file.
 - After writing each commit's block, compress its in-memory representation
   to the one-sentence + bullet format from step 3b.  Never carry full diffs,
   checkpatch output, or code-logic maps across commit boundaries.

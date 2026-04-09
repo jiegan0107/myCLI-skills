@@ -1,0 +1,667 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Review: misc: fastrpc: Add missing bug fixes (v4)</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                   "Helvetica Neue", Arial, sans-serif;
+      font-size: 14px; line-height: 1.6;
+      background: #f5f5f5; color: #222;
+    }
+    a { color: #0366d6; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .page-wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
+
+    /* Header card */
+    .review-header {
+      background: #fff; border: 1px solid #d0d7de;
+      border-radius: 8px; padding: 20px 24px; margin-bottom: 24px;
+    }
+    .review-header h1 { font-size: 1.3em; margin-bottom: 14px; color: #1a1a2e; }
+    .review-header table { border-collapse: collapse; width: 100%; }
+    .review-header td { padding: 3px 8px; vertical-align: top; }
+    .review-header td:first-child {
+      font-weight: 600; white-space: nowrap; color: #555; width: 190px;
+    }
+
+    /* Verdict banner */
+    .verdict-banner {
+      border-radius: 8px; padding: 20px 24px; margin-bottom: 24px; border: 2px solid;
+    }
+    .verdict-banner.needs-fixes  { background: #fff8f0; border-color: #e36209; }
+    .verdict-banner.needs-discussion { background: #fffbdd; border-color: #b08800; }
+    .verdict-banner.ready        { background: #f0fff4; border-color: #2da44e; }
+    .verdict-banner h2 { font-size: 1.15em; margin-bottom: 14px; }
+    .verdict-pill {
+      display: inline-block; padding: 4px 16px; border-radius: 20px;
+      font-weight: 700; font-size: 1em; margin-bottom: 16px;
+    }
+    .verdict-pill.needs-fixes  { background: #e36209; color: #fff; }
+    .verdict-pill.needs-discussion { background: #b08800; color: #fff; }
+    .verdict-pill.ready        { background: #2da44e; color: #fff; }
+    .stats-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 18px; }
+    .stat-chip {
+      padding: 4px 12px; border-radius: 6px; font-size: 0.88em; font-weight: 600;
+    }
+    .stat-chip.bugs     { background: #ffd7d7; color: #9e1c1c; }
+    .stat-chip.concerns { background: #fff0b3; color: #7d5a00; }
+    .stat-chip.minors   { background: #ddf4ff; color: #0550ae; }
+    .stat-chip.commits  { background: #e8f5e9; color: #1b5e20; }
+
+    /* Finding cards */
+    .findings-section { margin-top: 8px; }
+    .findings-category {
+      font-size: 0.72em; font-weight: 700; letter-spacing: 0.09em;
+      text-transform: uppercase; color: #555;
+      border-bottom: 2px solid #d0d7de; padding-bottom: 4px;
+      margin: 20px 0 10px;
+    }
+    .finding-card {
+      border-left: 4px solid; border-radius: 0 6px 6px 0;
+      padding: 12px 16px; margin-bottom: 10px; background: #fff;
+    }
+    .finding-card.bug     { border-color: #cf222e; }
+    .finding-card.concern { border-color: #e36209; }
+    .finding-card.minor   { border-color: #0550ae; }
+    .finding-card.nit     { border-color: #6e7781; }
+    .badge {
+      display: inline-block; padding: 1px 8px; border-radius: 4px;
+      font-size: 0.78em; font-weight: 700; margin-right: 6px; vertical-align: middle;
+    }
+    .badge.bug     { background: #cf222e; color: #fff; }
+    .badge.concern { background: #e36209; color: #fff; }
+    .badge.minor   { background: #0550ae; color: #fff; }
+    .badge.nit     { background: #6e7781; color: #fff; }
+    .finding-card .fc-title { font-weight: 600; vertical-align: middle; }
+    .finding-card .fc-body  { margin-top: 8px; color: #333; }
+    .finding-card .fc-file  {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.84em; color: #555; margin-top: 6px;
+    }
+    .finding-card .fc-suggestion {
+      margin-top: 8px; padding: 8px 12px;
+      background: #f6f8fa; border-radius: 4px; font-size: 0.9em; color: #333;
+    }
+    .finding-card .fc-suggestion::before { content: "Suggestion: "; font-weight: 600; }
+
+    /* Section cards */
+    .section-card {
+      background: #fff; border: 1px solid #d0d7de;
+      border-radius: 8px; padding: 20px 24px; margin-bottom: 24px;
+    }
+    .section-card h2 {
+      font-size: 1.05em; margin-bottom: 14px;
+      padding-bottom: 8px; border-bottom: 1px solid #d0d7de;
+    }
+    .section-card h3 { font-size: 0.97em; margin: 16px 0 8px; color: #333; }
+    .section-card h4 { font-size: 0.93em; margin: 12px 0 6px; color: #444; }
+
+    /* Test table */
+    .test-table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+    .test-table th, .test-table td {
+      padding: 8px 12px; text-align: left; border: 1px solid #d0d7de;
+    }
+    .test-table th { background: #f6f8fa; font-weight: 600; }
+    .test-table tr:nth-child(even) { background: #fafafa; }
+    .result-pass { color: #2da44e; font-weight: 700; }
+    .result-fail { color: #cf222e; font-weight: 700; }
+    .result-warn { color: #e36209; font-weight: 700; }
+    .result-skip { color: #6e7781; font-weight: 700; }
+
+    /* Commit blocks */
+    .commit-block {
+      background: #fff; border: 1px solid #d0d7de;
+      border-radius: 8px; margin-bottom: 24px; overflow: hidden;
+    }
+    .commit-header {
+      background: #f6f8fa; padding: 12px 20px;
+      border-bottom: 1px solid #d0d7de;
+      display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+    }
+    .commit-num { font-size: 0.8em; color: #888; font-weight: 600; }
+    .commit-hash {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.85em; color: #0550ae; font-weight: 600;
+    }
+    .commit-subject { font-weight: 600; font-size: 0.97em; }
+    .commit-body { padding: 16px 20px; }
+    .commit-summary { color: #555; margin-bottom: 14px; font-style: italic; }
+
+    /* Code / pre */
+    pre, code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.84em;
+    }
+    pre {
+      background: #f6f8fa; border: 1px solid #d0d7de;
+      border-radius: 6px; padding: 12px 16px;
+      overflow-x: auto; white-space: pre-wrap; word-break: break-word; margin: 8px 0;
+    }
+    code { background: #f0f0f0; padding: 1px 5px; border-radius: 3px; }
+
+    /* Lists */
+    ul, ol { padding-left: 20px; margin: 8px 0; }
+    li { margin-bottom: 4px; }
+
+    /* Positive notes */
+    .positive-note {
+      background: #f0fff4; border-left: 4px solid #2da44e;
+      border-radius: 0 6px 6px 0; padding: 10px 14px; margin-bottom: 8px;
+      font-size: 0.9em;
+    }
+
+    /* Note box */
+    .note-box {
+      background: #fffbdd; border-left: 4px solid #b08800;
+      border-radius: 0 6px 6px 0; padding: 10px 14px; margin-bottom: 12px;
+      font-size: 0.9em;
+    }
+
+    /* Footer */
+    .page-footer {
+      text-align: center; color: #888; font-size: 0.8em;
+      margin-top: 32px; padding-top: 16px; border-top: 1px solid #d0d7de;
+    }
+  </style>
+</head>
+<body>
+<div class="page-wrap">
+
+<!-- ═══ HEADER CARD ═══ -->
+<div class="review-header">
+  <h1>Review: misc: fastrpc: Add missing bug fixes (v4, 4 patches)</h1>
+  <table>
+    <tr><td>Date</td><td>2026-04-09</td></tr>
+    <tr><td>Reviewer</td><td>AI agent (qgenie)</td></tr>
+    <tr><td>Mode</td><td>B &mdash; patch series (lore.kernel.org)</td></tr>
+    <tr><td>Repository</td><td><code>/local/mnt/workspace/jiegan/code/linux-next</code></td></tr>
+    <tr><td>Commits / Patches</td><td>4</td></tr>
+    <tr><td>Branch</td><td><code>review/v4_20260409_jianping_li_misc_fastrpc</code> (patches 1&ndash;2 applied; patch 3 context mismatch)</td></tr>
+    <tr><td>Message-ID</td><td><code>20260409062617.1182-1-jianping.li@oss.qualcomm.com</code></td></tr>
+    <tr><td>lore.kernel.org</td>
+        <td><a href="https://lore.kernel.org/r/20260409062617.1182-1-jianping.li@oss.qualcomm.com">https://lore.kernel.org/r/20260409062617.1182-1-jianping.li@oss.qualcomm.com</a></td></tr>
+  </table>
+</div>
+
+<!-- ═══ VERDICT BANNER ═══ -->
+<div class="verdict-banner needs-fixes">
+  <h2>Overall Summary &mdash; Verdict at a Glance</h2>
+  <div class="verdict-pill needs-fixes">NEEDS FIXES</div>
+  <div class="stats-row">
+    <span class="stat-chip commits">4 patches reviewed</span>
+    <span class="stat-chip bugs">3 bugs</span>
+    <span class="stat-chip concerns">1 concern</span>
+    <span class="stat-chip minors">4 minor issues</span>
+  </div>
+
+  <div class="findings-section">
+
+    <div class="findings-category">Correctness / Bugs</div>
+
+    <div class="finding-card bug">
+      <span class="badge bug">[BUG]</span>
+      <span class="fc-title">Patch 3 &mdash; NULL-deref in <code>fastrpc_buf_free()</code> on probe-allocated <code>remote_heap</code></span>
+      <div class="fc-body">
+        <code>fastrpc_rpmsg_probe()</code> allocates <code>data-&gt;remote_heap</code> with
+        <code>kzalloc_obj(*data-&gt;remote_heap, GFP_KERNEL)</code>, leaving
+        <code>buf-&gt;fl = NULL</code>, <code>buf-&gt;dev = NULL</code>, and <code>buf-&gt;virt = NULL</code>.
+        <code>fastrpc_buf_free()</code> unconditionally calls
+        <code>dma_free_coherent(buf-&gt;dev, buf-&gt;size, buf-&gt;virt, fastrpc_ipa_to_dma_addr(buf-&gt;fl-&gt;cctx, ...))</code>.
+        Dereferencing <code>buf-&gt;fl-&gt;cctx</code> when <code>buf-&gt;fl</code> is NULL causes an
+        immediate NULL-pointer dereference when <code>fastrpc_rpmsg_remove()</code> calls
+        <code>fastrpc_buf_free(cctx-&gt;remote_heap)</code>.
+      </div>
+      <div class="fc-file">File: drivers/misc/fastrpc.c &mdash; probe hunk (patch 3, ~line 2378)</div>
+      <div class="fc-suggestion">Do not use <code>kzalloc_obj</code> to create a bare <code>fastrpc_buf</code> stub for the
+        probe-time remote_heap. Store the reserved-memory region as plain <code>dma_addr_t</code> +
+        <code>size_t</code> fields directly in <code>fastrpc_channel_ctx</code>, or allocate via
+        <code>fastrpc_remote_heap_alloc()</code> so that <code>buf-&gt;fl</code>, <code>buf-&gt;dev</code>,
+        and <code>buf-&gt;virt</code> are properly initialised.</div>
+    </div>
+
+    <div class="finding-card bug">
+      <span class="badge bug">[BUG]</span>
+      <span class="fc-title">Patch 3 &mdash; <code>audio_init_mem</code> flag reset without lock on <code>err_invoke:</code> path</span>
+      <div class="fc-body">
+        Inside <code>fastrpc_init_create_static_process()</code>, patch 3 sets
+        <code>fl-&gt;cctx-&gt;audio_init_mem = true</code> while holding <code>cctx-&gt;lock</code>
+        (via <code>spin_lock_irqsave</code>). On the <code>err_invoke:</code> label the flag is reset
+        to <code>false</code> without acquiring the lock. A concurrent call on another CPU that reads
+        <code>audio_init_mem</code> under the lock between the invoke failure and the flag reset will
+        see the flag as <code>true</code> and skip memory registration, leaving the Audio PD without
+        its heap.
+      </div>
+      <div class="fc-file">File: drivers/misc/fastrpc.c &mdash; <code>err_invoke:</code> label (patch 3, ~line 1377)</div>
+      <div class="fc-suggestion">Reset <code>audio_init_mem = false</code> inside
+        <code>spin_lock_irqsave</code> / <code>spin_unlock_irqrestore</code> to match the locking
+        discipline used when setting it.</div>
+    </div>
+
+    <div class="finding-card bug">
+      <span class="badge bug">[BUG]</span>
+      <span class="fc-title">Patch 3 &mdash; Memory leak when <code>vmcount == 0</code> in <code>fastrpc_rpmsg_remove()</code></span>
+      <div class="fc-body">
+        The outer guard <code>if (cctx-&gt;remote_heap &amp;&amp; cctx-&gt;vmcount)</code> means that
+        when <code>vmcount == 0</code> (no hypervisor protection), the probe-allocated
+        <code>remote_heap</code> stub is never freed, leaking the <code>kzalloc</code>&rsquo;d
+        <code>fastrpc_buf</code>. The inner <code>if (cctx-&gt;vmcount)</code> is also redundant
+        dead code (always true inside the outer guard).
+      </div>
+      <div class="fc-file">File: drivers/misc/fastrpc.c &mdash; <code>fastrpc_rpmsg_remove()</code> (patch 3, ~line 2485)</div>
+      <div class="fc-suggestion">Remove the redundant inner <code>if (cctx-&gt;vmcount)</code>.
+        Add an unconditional <code>kfree(cctx-&gt;remote_heap)</code> (or appropriate cleanup) for
+        the <code>vmcount == 0</code> case so the allocation is always released on channel teardown.</div>
+    </div>
+
+    <div class="findings-category">Patch Scope / Series</div>
+
+    <div class="finding-card concern">
+      <span class="badge concern">[CONCERN]</span>
+      <span class="fc-title">Series &mdash; Bug-fix patches mixed with non-bug-fix patch 4</span>
+      <div class="fc-body">
+        Patches 1&ndash;3 carry <code>Fixes:</code> tags and <code>Cc: stable</code>, making them
+        candidates for stable backport. Patch 4 (&ldquo;Allow fastrpc_buf_free() to accept NULL&rdquo;)
+        is a clean-up / defensive hardening patch with no <code>Fixes:</code> tag. Upstream policy
+        requires bug-fix patches to be sent separately from clean-ups so they can be cherry-picked
+        for stable without carrying unrelated changes.
+      </div>
+      <div class="fc-suggestion">Send patch 4 as a separate follow-up series after the bug-fix
+        series (patches 1&ndash;3) is accepted.</div>
+    </div>
+
+    <div class="findings-category">Minor / Style</div>
+
+    <div class="finding-card minor">
+      <span class="badge minor">[MINOR]</span>
+      <span class="fc-title">Patches 1 &amp; 2 &mdash; <code>Fixes:</code> hash is 13 characters, not 12</span>
+      <div class="fc-body">
+        Patch 1: <code>Fixes: 0871561055e66</code> (13 chars).<br>
+        Patch 2: <code>Fixes: 2419e55e532de</code> (13 chars).<br>
+        The kernel convention requires exactly 12 hex characters in a <code>Fixes:</code> hash.
+      </div>
+      <div class="fc-suggestion">Trim each hash to 12 characters:
+        <code>0871561055e6</code> and <code>2419e55e532d</code>.</div>
+    </div>
+
+    <div class="finding-card minor">
+      <span class="badge minor">[MINOR]</span>
+      <span class="fc-title">Patches 1, 2, 4 &mdash; <code>Co-developed-by:</code> duplicates the <code>From:</code> author</span>
+      <div class="fc-body">
+        In patches 1, 2, and 4 the <code>From:</code> header is
+        <em>Ekansh Gupta</em> and <code>Co-developed-by:</code> also names
+        <em>Ekansh Gupta</em>. checkpatch warns:
+        &ldquo;Co-developed-by: should not be used to attribute nominal patch author&rdquo;.
+        <code>Co-developed-by:</code> is for a contributor <em>other than</em> the <code>From:</code> author.
+      </div>
+      <div class="fc-suggestion">Remove the <code>Co-developed-by:</code> / <code>Signed-off-by:</code>
+        pair for the <code>From:</code> author; keep only the single <code>Signed-off-by:</code>
+        for that person.</div>
+    </div>
+
+    <div class="finding-card minor">
+      <span class="badge minor">[MINOR]</span>
+      <span class="fc-title">Patches 1 &amp; 2 &mdash; Wrong stable address</span>
+      <div class="fc-body">
+        Both patches use <code>Cc: stable@kernel.org</code>. The correct address for stable
+        backport requests is <code>stable@vger.kernel.org</code>.
+      </div>
+      <div class="fc-suggestion">Replace <code>stable@kernel.org</code> with
+        <code>stable@vger.kernel.org</code>.</div>
+    </div>
+
+    <div class="finding-card nit">
+      <span class="badge nit">[NIT]</span>
+      <span class="fc-title">Patch 3 &mdash; C99 for-loop variable declaration in <code>fastrpc_rpmsg_remove()</code></span>
+      <div class="fc-body">
+        <code>for (u32 i = 0; i &lt; cctx-&gt;vmcount; i++)</code> declares the loop variable
+        inside the <code>for()</code> initialiser. Kernel coding style requires variables to be
+        declared at the top of the enclosing block.
+      </div>
+      <div class="fc-suggestion">Declare <code>u32 i;</code> at the top of the block, before the loop.</div>
+    </div>
+
+  </div><!-- /findings-section -->
+</div><!-- /verdict-banner -->
+
+<!-- ═══ TEST RESULTS ═══ -->
+<div class="section-card">
+  <h2>Test Results</h2>
+  <div class="note-box">
+    Patches 1 and 2 applied cleanly to linux-next HEAD.
+    Patch 3 failed to apply (context mismatch at <code>drivers/misc/fastrpc.c:1382</code>);
+    patches 3 and 4 were reviewed from the raw diff in the mbx file.
+    Patch 4 was not applied (depends on patch 3).
+  </div>
+  <table class="test-table">
+    <thead>
+      <tr><th>Test</th><th>Result</th><th>Notes</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>checkpatch (--strict)</td>
+        <td><span class="result-warn">WARN</span></td>
+        <td>0 errors, 11 warnings &mdash; see details below</td>
+      </tr>
+      <tr>
+        <td>Build (W=1)</td>
+        <td><span class="result-pass">PASS</span></td>
+        <td>No errors or warnings in <code>drivers/misc/fastrpc.c</code> (pre-patch baseline)</td>
+      </tr>
+      <tr>
+        <td>dt_binding_check</td>
+        <td><span class="result-skip">SKIP</span></td>
+        <td>No <code>.yaml</code> files changed</td>
+      </tr>
+      <tr>
+        <td>sparse</td>
+        <td><span class="result-skip">SKIP</span></td>
+        <td>sparse not available on this host</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3>checkpatch findings (combined mbx, --strict)</h3>
+  <p style="margin-bottom:8px;color:#555;font-size:0.9em;">
+    The <em>Duplicate signature</em> warnings are false positives from the multi-patch mbox format.
+    The three <em>Co-developed-by</em> warnings are genuine (see [MINOR] finding above).
+  </p>
+  <pre>WARNING: Co-developed-by: should not be used to attribute nominal patch author
+         'Ekansh Gupta &lt;ekansh.gupta@oss.qualcomm.com&gt;'
+         (patches 1, 2, 4 — From: and Co-developed-by: name the same person)
+
+WARNING: Duplicate signature  (lines #78–#81, #175, #375–#377)
+         — false positives from combined mbox format
+
+total: 0 errors, 11 warnings, 0 checks, 273 lines checked</pre>
+</div>
+
+<!-- ═══ PER-PATCH REVIEWS ═══ -->
+
+<!-- Patch 1 -->
+<div class="commit-block">
+  <div class="commit-header">
+    <span class="commit-num">1/4</span>
+    <span class="commit-subject">misc: fastrpc: Fix initial memory allocation for Audio PD memory pool</span>
+  </div>
+  <div class="commit-body">
+    <p class="commit-summary">
+      Moves <code>inbuf</code> initialisation before the <code>remote_heap</code> allocation block
+      and sets <code>pageslen = 1</code> after a successful SCM assignment, so the initial buffer
+      is correctly registered with the Audio PD memory pool.
+    </p>
+    <h3>Code Logic Maps</h3>
+    <pre>fastrpc_init_create_static_process() — changed region
+
+BEFORE:
+  1. memdup_user name
+  2. if (!fl->cctx->remote_heap): allocate + SCM assign; scm_done = true
+  3. [after the if block] inbuf.client_id / namelen / pageslen = 0  ← always 0
+  4. fl->pd = USER_PD; build args; invoke DSP
+
+AFTER:
+  1. memdup_user name
+  2. [NEW] inbuf.client_id / namelen / pageslen = 0  (moved before the if block)
+  3. if (!fl->cctx->remote_heap): allocate + SCM assign
+       if (vmcount): scm_done = true; [NEW] inbuf.pageslen = 1
+  4. fl->pd = USER_PD; build args; invoke DSP
+
+WHY: pageslen was always 0 because it was assigned after the allocation block,
+     so the DSP never received the page descriptor and the buffer was leaked.</pre>
+    <h3>Issues</h3>
+    <p style="color:#555;font-size:0.9em;">None.</p>
+    <h3>Minor / Style</h3>
+    <div class="finding-card minor">
+      <span class="badge minor">[MINOR]</span>
+      <span class="fc-title"><code>Fixes:</code> hash is 13 characters (should be 12)</span>
+      <div class="fc-body"><code>Fixes: 0871561055e66</code> has 13 hex digits.</div>
+      <div class="fc-suggestion">Trim to 12: <code>Fixes: 0871561055e6</code>.</div>
+    </div>
+    <div class="finding-card minor">
+      <span class="badge minor">[MINOR]</span>
+      <span class="fc-title"><code>Co-developed-by:</code> duplicates <code>From:</code> author</span>
+      <div class="fc-body">Both <code>From:</code> and <code>Co-developed-by:</code> name Ekansh Gupta. checkpatch warns about this.</div>
+      <div class="fc-suggestion">Remove the redundant <code>Co-developed-by:</code> / <code>Signed-off-by:</code> pair for the <code>From:</code> author; keep only one <code>Signed-off-by:</code>.</div>
+    </div>
+    <div class="finding-card minor">
+      <span class="badge minor">[MINOR]</span>
+      <span class="fc-title">Wrong stable address</span>
+      <div class="fc-body"><code>Cc: stable@kernel.org</code> &mdash; correct address is <code>stable@vger.kernel.org</code>.</div>
+      <div class="fc-suggestion">Replace with <code>Cc: stable@vger.kernel.org</code>.</div>
+    </div>
+    <h3>Positive Notes</h3>
+    <div class="positive-note">
+      Fix is minimal and correct. Moving <code>inbuf</code> initialisation earlier and setting
+      <code>pageslen = 1</code> only on the SCM-success path is the right approach.
+      The <code>Fixes:</code> tag correctly identifies the introducing commit.
+    </div>
+  </div>
+</div>
+
+<!-- Patch 2 -->
+<div class="commit-block">
+  <div class="commit-header">
+    <span class="commit-num">2/4</span>
+    <span class="commit-subject">misc: fastrpc: Remove buffer from list prior to unmap operation</span>
+  </div>
+  <div class="commit-body">
+    <p class="commit-summary">
+      Moves <code>list_del()</code> from <code>fastrpc_req_munmap_impl()</code> to
+      <code>fastrpc_req_munmap()</code> (before the DSP unmap RPC), re-adds the buffer on failure,
+      and fixes the <code>fastrpc_req_mmap()</code> error path to remove the buffer from the list
+      before calling <code>fastrpc_req_munmap_impl()</code>.
+    </p>
+    <h3>Code Logic Maps</h3>
+    <pre>fastrpc_req_munmap_impl() — BEFORE: list_del under fl->lock after successful DSP unmap.
+                            AFTER:  list_del removed; caller is responsible.
+
+fastrpc_req_munmap() — AFTER:
+  1. copy_from_user req
+  2. spin_lock; find buf in fl->mmaps; [NEW] list_del(&iter->node); spin_unlock
+  3. if (!buf): return -EINVAL
+  4. err = fastrpc_req_munmap_impl(fl, buf)
+  5. if (err): spin_lock; list_add_tail(&buf->node, &fl->mmaps); spin_unlock
+  6. return err
+
+fastrpc_req_mmap() error path — AFTER:
+  err_copy: [NEW] spin_lock; list_del(&buf->node); spin_unlock
+  err_assign: fastrpc_req_munmap_impl(fl, buf)   ← munmap_impl no longer does list_del
+
+WHY: A concurrent thread could remove the same list entry while the unmap RPC
+     was in flight, causing a double-remove or use-after-free on the list node.</pre>
+    <h3>Issues</h3>
+    <p style="color:#555;font-size:0.9em;">None.</p>
+    <h3>Minor / Style</h3>
+    <div class="finding-card minor">
+      <span class="badge minor">[MINOR]</span>
+      <span class="fc-title"><code>Fixes:</code> hash is 13 characters (should be 12)</span>
+      <div class="fc-body"><code>Fixes: 2419e55e532de</code> has 13 hex digits.</div>
+      <div class="fc-suggestion">Trim to 12: <code>Fixes: 2419e55e532d</code>.</div>
+    </div>
+    <div class="finding-card minor">
+      <span class="badge minor">[MINOR]</span>
+      <span class="fc-title"><code>Co-developed-by:</code> duplicates <code>From:</code> author</span>
+      <div class="fc-body">Same issue as patch 1 &mdash; From: and Co-developed-by: both name Ekansh Gupta.</div>
+      <div class="fc-suggestion">Remove the redundant <code>Co-developed-by:</code> / <code>Signed-off-by:</code> pair for the <code>From:</code> author.</div>
+    </div>
+    <div class="finding-card minor">
+      <span class="badge minor">[MINOR]</span>
+      <span class="fc-title">Wrong stable address</span>
+      <div class="fc-body"><code>Cc: stable@kernel.org</code> should be <code>stable@vger.kernel.org</code>.</div>
+      <div class="fc-suggestion">Replace with <code>Cc: stable@vger.kernel.org</code>.</div>
+    </div>
+    <h3>Positive Notes</h3>
+    <div class="positive-note">
+      The race fix is correct and well-structured: remove-before-RPC with re-add-on-failure
+      is the standard kernel pattern for this class of problem. The companion fix to the
+      <code>fastrpc_req_mmap()</code> error path is a necessary and correct companion change.
+    </div>
+  </div>
+</div>
+
+<!-- Patch 3 -->
+<div class="commit-block">
+  <div class="commit-header">
+    <span class="commit-num">3/4</span>
+    <span class="commit-subject">misc: fastrpc: Allocate entire reserved memory for Audio PD in probe</span>
+  </div>
+  <div class="commit-body">
+    <div class="note-box">
+      This patch did not apply cleanly to linux-next HEAD (context mismatch at
+      <code>drivers/misc/fastrpc.c:1382</code>). Review is based on the raw diff from the mbx file.
+    </div>
+    <p class="commit-summary">
+      Moves Audio PD <code>remote_heap</code> allocation from per-user
+      <code>fastrpc_init_create_static_process()</code> to <code>fastrpc_rpmsg_probe()</code>,
+      tying the heap lifetime to the rpmsg channel. Adds <code>audio_init_mem</code> flag to
+      track first-time DSP registration.
+    </p>
+    <h3>Code Logic Maps</h3>
+    <pre>fastrpc_rpmsg_probe() — new ADSP branch:
+  if (domain_id == SDSP_DOMAIN_ID || domain_id == ADSP_DOMAIN_ID):
+    [existing SDSP SCM code unchanged]
+    if (domain_id == ADSP_DOMAIN_ID):
+      data->remote_heap = kzalloc_obj(*data->remote_heap, GFP_KERNEL)
+        → return -ENOMEM on failure
+      data->remote_heap->dma_addr = res.start
+      data->remote_heap->size = resource_size(&res)
+  BUG: kzalloc_obj leaves buf->fl=NULL, buf->dev=NULL, buf->virt=NULL.
+       fastrpc_buf_free() dereferences buf->fl->cctx → NULL-deref on remove.
+
+fastrpc_init_create_static_process() — changed region:
+  spin_lock_irqsave(&cctx->lock, flags)
+  if (!fl->cctx->audio_init_mem):
+    validate remote_heap fields → spin_unlock + return -ENOMEM if invalid
+    pages[0] = remote_heap addr/size
+    fl->cctx->audio_init_mem = true   ← set under lock ✓
+    inbuf.pageslen = 1
+  else:
+    pages[0] = {0, 0}
+  spin_unlock_irqrestore(&cctx->lock, flags)
+  ... invoke DSP ...
+  err_invoke:
+    fl->cctx->audio_init_mem = false  ← reset WITHOUT lock ← BUG
+
+fastrpc_rpmsg_remove() — changed region:
+  if (cctx->remote_heap && cctx->vmcount):   ← outer guard
+    if (cctx->vmcount):                       ← redundant dead code
+      SCM reassign memory back to HLOS
+      if (!err): fastrpc_buf_free(cctx->remote_heap)
+  [no else: vmcount==0 → remote_heap never freed → memory leak]</pre>
+    <h3>Issues</h3>
+    <div class="finding-card bug">
+      <span class="badge bug">[BUG]</span>
+      <span class="fc-title">NULL-deref in <code>fastrpc_buf_free()</code> on probe-allocated <code>remote_heap</code></span>
+      <div class="fc-body">
+        <code>kzalloc_obj(*data-&gt;remote_heap, GFP_KERNEL)</code> leaves <code>buf-&gt;fl = NULL</code>.
+        <code>fastrpc_buf_free()</code> calls <code>fastrpc_ipa_to_dma_addr(buf-&gt;fl-&gt;cctx, ...)</code>
+        &mdash; NULL-pointer dereference when <code>fastrpc_rpmsg_remove()</code> runs.
+      </div>
+      <div class="fc-file">File: drivers/misc/fastrpc.c, probe hunk ~line 2378</div>
+      <div class="fc-suggestion">Store the reserved-memory region as plain <code>dma_addr_t</code> +
+        <code>size_t</code> fields in <code>fastrpc_channel_ctx</code> and release with
+        <code>kfree()</code> in remove, OR allocate via <code>fastrpc_remote_heap_alloc()</code>
+        so all <code>fastrpc_buf</code> fields are properly initialised.</div>
+    </div>
+    <div class="finding-card bug">
+      <span class="badge bug">[BUG]</span>
+      <span class="fc-title"><code>audio_init_mem</code> reset without lock on <code>err_invoke:</code> path</span>
+      <div class="fc-body">
+        Flag is set to <code>true</code> under <code>spin_lock_irqsave</code> but reset to
+        <code>false</code> on <code>err_invoke:</code> without holding the lock. A concurrent
+        caller can read <code>audio_init_mem = true</code> under the lock between the invoke
+        failure and the reset, skip memory registration, and proceed with
+        <code>pages[0] = {0, 0}</code>.
+      </div>
+      <div class="fc-file">File: drivers/misc/fastrpc.c, <code>err_invoke:</code> label ~line 1377</div>
+      <div class="fc-suggestion">Acquire <code>cctx-&gt;lock</code> (spin_lock_irqsave) before
+        resetting <code>audio_init_mem = false</code> on the error path.</div>
+    </div>
+    <div class="finding-card bug">
+      <span class="badge bug">[BUG]</span>
+      <span class="fc-title">Memory leak when <code>vmcount == 0</code> in <code>fastrpc_rpmsg_remove()</code></span>
+      <div class="fc-body">
+        Outer guard <code>if (cctx-&gt;remote_heap &amp;&amp; cctx-&gt;vmcount)</code> skips
+        cleanup entirely when <code>vmcount == 0</code>. The inner
+        <code>if (cctx-&gt;vmcount)</code> is redundant dead code (always true inside the outer guard).
+      </div>
+      <div class="fc-file">File: drivers/misc/fastrpc.c, <code>fastrpc_rpmsg_remove()</code> ~line 2485</div>
+      <div class="fc-suggestion">Remove the redundant inner check. Add an unconditional free
+        for the <code>vmcount == 0</code> case so the allocation is always released on channel teardown.</div>
+    </div>
+    <h3>Minor / Style</h3>
+    <div class="finding-card nit">
+      <span class="badge nit">[NIT]</span>
+      <span class="fc-title">C99 for-loop variable declaration in <code>fastrpc_rpmsg_remove()</code></span>
+      <div class="fc-body"><code>for (u32 i = 0; i &lt; cctx-&gt;vmcount; i++)</code> &mdash; kernel style requires declaring variables at the top of the block.</div>
+      <div class="fc-suggestion">Declare <code>u32 i;</code> before the loop.</div>
+    </div>
+    <div class="finding-card minor">
+      <span class="badge minor">[MINOR]</span>
+      <span class="fc-title">No <code>Fixes:</code> tag</span>
+      <div class="fc-body">The cover letter describes this as a bug fix. If it corrects a specific commit, a <code>Fixes:</code> tag should be added.</div>
+      <div class="fc-suggestion">Add a <code>Fixes:</code> tag referencing the commit that introduced the unsafe userspace alloc/free pattern for Audio PD memory.</div>
+    </div>
+  </div>
+</div>
+
+<!-- Patch 4 -->
+<div class="commit-block">
+  <div class="commit-header">
+    <span class="commit-num">4/4</span>
+    <span class="commit-subject">misc: fastrpc: Allow fastrpc_buf_free() to accept NULL</span>
+  </div>
+  <div class="commit-body">
+    <p class="commit-summary">
+      Adds a NULL guard at the top of <code>fastrpc_buf_free()</code> and removes two
+      open-coded NULL checks at call sites in <code>fastrpc_context_free()</code> and
+      <code>fastrpc_device_release()</code>.
+    </p>
+    <h3>Code Logic Maps</h3>
+    <pre>fastrpc_buf_free() — BEFORE: no NULL check; callers must guard.
+                     AFTER:  if (!buf) return;  then dma_free_coherent + kfree.
+
+fastrpc_context_free():   if (ctx->buf) fastrpc_buf_free(ctx->buf)
+                    →     fastrpc_buf_free(ctx->buf)   (guard now inside)
+
+fastrpc_device_release(): if (fl->init_mem) fastrpc_buf_free(fl->init_mem)
+                    →     fastrpc_buf_free(fl->init_mem)   (guard now inside)</pre>
+    <h3>Issues</h3>
+    <p style="color:#555;font-size:0.9em;">None.</p>
+    <h3>Minor / Style</h3>
+    <div class="finding-card minor">
+      <span class="badge minor">[MINOR]</span>
+      <span class="fc-title"><code>Co-developed-by:</code> duplicates <code>From:</code> author</span>
+      <div class="fc-body">Same issue as patches 1 and 2 &mdash; <code>From:</code> and <code>Co-developed-by:</code> both name Ekansh Gupta.</div>
+      <div class="fc-suggestion">Remove the redundant <code>Co-developed-by:</code> / <code>Signed-off-by:</code> pair for the <code>From:</code> author.</div>
+    </div>
+    <h3>Series-Level Concern</h3>
+    <div class="finding-card concern">
+      <span class="badge concern">[CONCERN]</span>
+      <span class="fc-title">Patch 4 should be a separate series</span>
+      <div class="fc-body">
+        Patches 1&ndash;3 are bug fixes with <code>Fixes:</code> tags and <code>Cc: stable</code>.
+        Patch 4 is a clean-up with no <code>Fixes:</code> tag. Mixing them prevents stable
+        maintainers from cherry-picking only the bug fixes without carrying unrelated changes.
+      </div>
+      <div class="fc-suggestion">Send patch 4 as a separate follow-up series after patches 1&ndash;3 are accepted.</div>
+    </div>
+    <h3>Positive Notes</h3>
+    <div class="positive-note">
+      Clean, idiomatic change following the <code>kfree(NULL)</code> convention.
+      Removing the open-coded NULL checks at call sites reduces boilerplate.
+    </div>
+  </div>
+</div>
+
+<!-- ═══ FOOTER ═══ -->
+<div class="page-footer">
+  Generated by AI agent (qgenie) &mdash; <em>2026-04-09</em>
+</div>
+
+</div><!-- /page-wrap -->
+</body>
+</html>

@@ -667,147 +667,46 @@ asymmetric or incomplete.
 | **Patch Scope** | Apply Step 3e: one patch = one purpose; flag any patch that fixes multiple independent bugs, mixes bug-fix with unrelated clean-up, or has a subject line with multiple actions; check series-level bisectability and stable-backport hygiene |
 ## Step 5 — Output Format
 
+All output is written as **HTML** using the structure defined in Step 6.
+The templates below describe the *logical content* of each block; map each
+element to the corresponding HTML structure from Step 6.
+
 ### Per-commit block
+
+Each commit gets one `<div class="commit-block">` containing:
+- A `.commit-header` with the short hash and subject.
+- A `.commit-body` with:
+  - A `.commit-summary` paragraph (one sentence).
+  - An `<h3>Code Logic Maps</h3>` section with a `<pre>` block for
+    control-flow, data-flow, state/lifecycle, call-graph, and before-vs-after
+    delta (from Steps 3c.1–3c.5).
+  - An `<h3>DT / DT-Binding Notes</h3>` section (only when the commit touches
+    `.yaml` bindings, `.dts`/`.dtsi`, or `of_match`).
+  - An `<h3>Issues</h3>` section with one `.finding-card` per finding.
+  - An `<h3>Minor / Style</h3>` section with `.finding-card` elements.
+  - An `<h3>Positive Notes</h3>` section with `.positive-note` elements
+    (optional).
 
 ### Per-file block (Mode C only)
 
-Use this block instead of the per-commit block when reviewing a single file.
+Same structure as the per-commit block but without a commit hash in the
+header.  The header shows the relative file path instead.  Omit patch-scope
+and commit-message finding categories.
 
-```
-## File <relative/path/to/file>
+### Overall Summary / Verdict Banner
 
-**Summary**: One sentence describing what the file does.
+Rendered as `<div class="verdict-banner [class]">` at the top of the page
+(immediately after the header card).  Contains:
+- The verdict pill (`READY TO APPLY` / `NEEDS FIXES` / `NEEDS DISCUSSION`).
+- Stats row chips: commits reviewed, bugs, concerns, minor issues.
+- Key findings grouped by category using `.findings-category` dividers and
+  `.finding-card` elements.
 
-### Code Logic Maps
-<control-flow summary per function from Step 3c.1>
-<data-flow notes from Step 3c.2 — highlight any unvalidated inputs>
-<state/lifecycle notes from Step 3c.3 — if applicable>
-<call-graph notes from Step 3c.4 — if applicable>
-
-### DT / DT-Binding Notes
-<only present when the file is a .yaml binding, .dts/.dtsi, or contains of_match>
-- Schema validation result (dt_binding_check / dtbs_check)
-- compatible string correctness and vendor-prefix check
-- Property definitions: types, constraints, descriptions, examples
-- reg / interrupts / clocks / resets / gpio / pinctrl cross-check
-- DTS node naming, unit-address, formatting
-- Driver of_match consistency and deprecated API usage
-- MAINTAINERS / vendor-prefixes.yaml coverage
-
-### Issues
-- **[SEVERITY] Category**: Description.
-  - File: `path/to/file.c`, line ~N
-  - Suggestion: ...
-
-### Minor / Style
-- ...
-
-### Positive notes (optional)
-- ...
-```
-
-The **Overall Summary** block for Mode C uses the same format as Mode A/B but
-replaces "Total commits reviewed" with "Files reviewed: 1" and omits the
-patch-scope and commit-message finding categories.
-
-
-```
-## Commit <short-hash>: <subject>
-
-**Summary**: One sentence describing what the commit does.
-
-### Code Logic Maps
-<control-flow summary per changed function from Step 3c.1>
-<data-flow notes from Step 3c.2 — highlight any unvalidated inputs>
-<state/lifecycle notes from Step 3c.3 — if applicable>
-<call-graph notes from Step 3c.4 — if applicable>
-<before-vs-after delta from Step 3c.5>
-
-### DT / DT-Binding Notes
-<only present when the commit touches .yaml bindings, .dts/.dtsi, or of_match>
-- Schema validation result (dt_binding_check / dtbs_check)
-- compatible string correctness and vendor-prefix check
-- Property definitions: types, constraints, descriptions, examples
-- reg / interrupts / clocks / resets / gpio / pinctrl cross-check
-- DTS node naming, unit-address, formatting
-- Driver of_match consistency and deprecated API usage
-- MAINTAINERS / vendor-prefixes.yaml / commit subject prefix
-
-### Issues
-- **[SEVERITY] Category**: Description.
-  - File: `path/to/file.c`, line ~N
-  - Suggestion: ...
-
-### Minor / Style
-- ...
-
-### Positive notes (optional)
-- ...
-```
+**Full-detail rule**: every `.finding-card` in the verdict banner must include
+the commit hash, a full description, the file path + line number, and a
+concrete suggestion.  No one-liners.
 
 Severity levels: `[BUG]` · `[CONCERN]` · `[MINOR]` · `[NIT]`
-
-### Overall summary block
-
-Write this block first when composing the review file (it will be placed at
-the top per Step 6).  Use the `================================================================` banner
-lines to make it visually prominent.
-
-**Full-detail rule**: every entry in `Key findings` must be written with
-complete information — no one-liners that just name the problem.  Each
-finding must include:
-- The commit hash and subject it belongs to.
-- A clear description of the problem (what is wrong and why it matters).
-- The exact file path and approximate line number where applicable.
-- A concrete suggestion or recommended fix.
-
-Group findings by category using `────` sub-separators when there are
-multiple distinct categories (e.g. "PATCH SCOPE VIOLATIONS", "CORRECTNESS
-ISSUES", "STYLE / MINOR").  This makes the summary self-contained: a
-reviewer reading only the summary must have enough detail to act on every
-finding without needing to read the per-commit sections.
-
-```
-================================================================
-## Overall Summary   <<<  VERDICT AT A GLANCE
-================================================================
-
-**Total commits reviewed**: N
-**Bugs found**: N
-**Concerns**: N
-**Minor issues**: N
-
-### Recommendation
-READY TO APPLY | NEEDS FIXES | NEEDS DISCUSSION
-
-### Key findings
-
-────────────────────────────────────────────────────────────────
-<CATEGORY LABEL — e.g. PATCH SCOPE VIOLATIONS>
-────────────────────────────────────────────────────────────────
-
-- [SEVERITY] <commit hash> — <short title>
-
-  <Full description: what is wrong, why it matters, root cause.>
-
-  <File: path/to/file.c, line ~N (if applicable)>
-
-  Suggestion: <concrete fix or recommended action>
-
-────────────────────────────────────────────────────────────────
-<NEXT CATEGORY — e.g. CORRECTNESS ISSUES>
-────────────────────────────────────────────────────────────────
-
-- [SEVERITY] <commit hash> — <short title>
-
-  <Full description.>
-
-  <File: path/to/file.c, line ~N>
-
-  Suggestion: <concrete fix>
-
-================================================================
-```
 
 ## Step 6 — Save the Review
 
@@ -817,11 +716,11 @@ and skip the file.  The file is the primary deliverable — the terminal
 output is secondary.  If the file is not written, the review is incomplete.
 
 **Filename**:
-- Mode A: `review_<repo-basename>_last<N>_<YYYYMMDD>.txt`
-- Mode B: `review_<message-id-slug>_<YYYYMMDD>.txt`
-- Mode C: `review_<repo-basename>_<filename-no-ext>_<YYYYMMDD>.txt`
+- Mode A: `review_<repo-basename>_last<N>_<YYYYMMDD>.html`
+- Mode B: `review_<message-id-slug>_<YYYYMMDD>.html`
+- Mode C: `review_<repo-basename>_<filename-no-ext>_<YYYYMMDD>.html`
   where `<filename-no-ext>` is the basename of the reviewed file with its
-  extension stripped (e.g. reviewing `iris_vpu3x.c` → `review_linux-next_iris_vpu3x_20260403.txt`).
+  extension stripped (e.g. reviewing `iris_vpu3x.c` → `review_linux-next_iris_vpu3x_20260403.html`).
 
 **Save location**: always `<project_path>` — the project directory supplied by
 the user.  Never save to the current working directory, the home directory, or
@@ -833,64 +732,368 @@ The **Overall Summary** must appear at the top of the file, immediately after
 the header block, so the reader sees the verdict and key findings without
 scrolling.  The detailed per-commit reviews and test results follow.
 
-```markdown
-# Review: <series subject or "Last N commits in <repo>" or "File <path> in <repo>">
+The output file is a **fully structured HTML document**.  Use semantic HTML5
+with embedded CSS for readability.  The structure below is mandatory.
 
-**Date**: YYYY-MM-DD
-**Reviewer**: AI agent (qgenie)
-**Mode**: A — local commits  |  B — patch series  |  C — single file
-**Repository**: <project_path>
-**Commits / Patches**: N  (omit for Mode C)
-**Branch** (Mode B only): review/<slug>
-**Message-ID** (Mode B only): <message-id>
-**lore.kernel.org link** (Mode B only): https://lore.kernel.org/r/<message-id>
-**File** (Mode C only): <relative/path/to/file>
+### HTML skeleton
 
----
-================================================================
-## Overall Summary   <<<  VERDICT AT A GLANCE
-================================================================
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Review: <series subject></title>
+  <style>
+    /* ── Reset & base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+                   "Helvetica Neue", Arial, sans-serif;
+      font-size: 14px; line-height: 1.6;
+      background: #f5f5f5; color: #222;
+    }
+    a { color: #0366d6; text-decoration: none; }
+    a:hover { text-decoration: underline; }
 
-**Total commits reviewed**: N
-**Bugs found**: N
-**Concerns**: N
-**Minor issues**: N
+    /* ── Layout ── */
+    .page-wrap { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
 
-### Recommendation
-READY TO APPLY | NEEDS FIXES | NEEDS DISCUSSION
+    /* ── Header card ── */
+    .review-header {
+      background: #fff; border: 1px solid #d0d7de;
+      border-radius: 8px; padding: 20px 24px; margin-bottom: 24px;
+    }
+    .review-header h1 { font-size: 1.4em; margin-bottom: 12px; }
+    .review-header table { border-collapse: collapse; width: 100%; }
+    .review-header td { padding: 3px 8px; vertical-align: top; }
+    .review-header td:first-child { font-weight: 600; white-space: nowrap;
+                                    color: #555; width: 180px; }
 
-### Key findings
+    /* ── Verdict banner ── */
+    .verdict-banner {
+      border-radius: 8px; padding: 20px 24px; margin-bottom: 24px;
+      border: 2px solid;
+    }
+    .verdict-banner.needs-fixes  { background: #fff8f0; border-color: #e36209; }
+    .verdict-banner.needs-discussion { background: #fffbdd; border-color: #b08800; }
+    .verdict-banner.ready        { background: #f0fff4; border-color: #2da44e; }
+    .verdict-banner h2 { font-size: 1.2em; margin-bottom: 12px; }
+    .verdict-pill {
+      display: inline-block; padding: 4px 14px; border-radius: 20px;
+      font-weight: 700; font-size: 1em; margin-bottom: 16px;
+    }
+    .verdict-pill.needs-fixes  { background: #e36209; color: #fff; }
+    .verdict-pill.needs-discussion { background: #b08800; color: #fff; }
+    .verdict-pill.ready        { background: #2da44e; color: #fff; }
+    .stats-row { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }
+    .stat-chip {
+      padding: 4px 12px; border-radius: 6px; font-size: 0.9em; font-weight: 600;
+    }
+    .stat-chip.bugs     { background: #ffd7d7; color: #9e1c1c; }
+    .stat-chip.concerns { background: #fff0b3; color: #7d5a00; }
+    .stat-chip.minors   { background: #ddf4ff; color: #0550ae; }
+    .stat-chip.commits  { background: #e8f5e9; color: #1b5e20; }
 
-────────────────────────────────────────────────────────────────
-<CATEGORY LABEL — e.g. PATCH SCOPE VIOLATIONS>
-────────────────────────────────────────────────────────────────
+    /* ── Key findings ── */
+    .findings-section { margin-top: 16px; }
+    .findings-category {
+      font-size: 0.75em; font-weight: 700; letter-spacing: 0.08em;
+      text-transform: uppercase; color: #555;
+      border-bottom: 2px solid #d0d7de; padding-bottom: 4px;
+      margin: 20px 0 10px;
+    }
+    .finding-card {
+      border-left: 4px solid; border-radius: 0 6px 6px 0;
+      padding: 12px 16px; margin-bottom: 12px; background: #fff;
+    }
+    .finding-card.bug     { border-color: #cf222e; }
+    .finding-card.concern { border-color: #e36209; }
+    .finding-card.minor   { border-color: #0550ae; }
+    .finding-card.nit     { border-color: #6e7781; }
+    .finding-card .badge {
+      display: inline-block; padding: 1px 8px; border-radius: 4px;
+      font-size: 0.78em; font-weight: 700; margin-right: 6px;
+    }
+    .badge.bug     { background: #cf222e; color: #fff; }
+    .badge.concern { background: #e36209; color: #fff; }
+    .badge.minor   { background: #0550ae; color: #fff; }
+    .badge.nit     { background: #6e7781; color: #fff; }
+    .finding-card .title { font-weight: 600; }
+    .finding-card .body  { margin-top: 8px; color: #333; }
+    .finding-card .file-ref {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.85em; color: #555; margin-top: 6px;
+    }
+    .finding-card .suggestion {
+      margin-top: 8px; padding: 8px 12px;
+      background: #f6f8fa; border-radius: 4px;
+      font-size: 0.9em; color: #333;
+    }
+    .finding-card .suggestion::before {
+      content: "Suggestion: "; font-weight: 600;
+    }
 
-- [SEVERITY] <commit hash> — <short title>
+    /* ── Section cards ── */
+    .section-card {
+      background: #fff; border: 1px solid #d0d7de;
+      border-radius: 8px; padding: 20px 24px; margin-bottom: 24px;
+    }
+    .section-card h2 {
+      font-size: 1.1em; margin-bottom: 16px;
+      padding-bottom: 8px; border-bottom: 1px solid #d0d7de;
+    }
+    .section-card h3 { font-size: 1em; margin: 16px 0 8px; color: #333; }
+    .section-card h4 { font-size: 0.95em; margin: 12px 0 6px; color: #444; }
 
-  <Full description: what is wrong, why it matters, root cause.>
+    /* ── Test results table ── */
+    .test-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+    .test-table th, .test-table td {
+      padding: 8px 12px; text-align: left;
+      border: 1px solid #d0d7de;
+    }
+    .test-table th { background: #f6f8fa; font-weight: 600; }
+    .test-table tr:nth-child(even) { background: #fafafa; }
+    .result-pass { color: #2da44e; font-weight: 700; }
+    .result-fail { color: #cf222e; font-weight: 700; }
+    .result-warn { color: #e36209; font-weight: 700; }
+    .result-skip { color: #6e7781; font-weight: 700; }
 
-  <File: path/to/file.c, line ~N (if applicable)>
+    /* ── Commit blocks ── */
+    .commit-block {
+      background: #fff; border: 1px solid #d0d7de;
+      border-radius: 8px; margin-bottom: 24px; overflow: hidden;
+    }
+    .commit-header {
+      background: #f6f8fa; padding: 12px 20px;
+      border-bottom: 1px solid #d0d7de;
+      display: flex; align-items: baseline; gap: 10px;
+    }
+    .commit-hash {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.85em; color: #0550ae; font-weight: 600;
+    }
+    .commit-subject { font-weight: 600; font-size: 1em; }
+    .commit-body { padding: 16px 20px; }
+    .commit-summary { color: #555; margin-bottom: 16px; font-style: italic; }
 
-  Suggestion: <concrete fix or recommended action>
+    /* ── Code / pre ── */
+    pre, code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.85em;
+    }
+    pre {
+      background: #f6f8fa; border: 1px solid #d0d7de;
+      border-radius: 6px; padding: 12px 16px;
+      overflow-x: auto; white-space: pre-wrap; word-break: break-word;
+      margin: 8px 0;
+    }
+    code { background: #f0f0f0; padding: 1px 5px; border-radius: 3px; }
 
-────────────────────────────────────────────────────────────────
-<NEXT CATEGORY — e.g. CORRECTNESS ISSUES>
-────────────────────────────────────────────────────────────────
+    /* ── Lists ── */
+    ul, ol { padding-left: 20px; margin: 8px 0; }
+    li { margin-bottom: 4px; }
 
-- [SEVERITY] <commit hash> — <short title>
+    /* ── Positive notes ── */
+    .positive-note {
+      background: #f0fff4; border-left: 4px solid #2da44e;
+      border-radius: 0 6px 6px 0; padding: 10px 14px; margin-bottom: 8px;
+      font-size: 0.9em;
+    }
 
-  <Full description.>
+    /* ── Footer ── */
+    .page-footer {
+      text-align: center; color: #888; font-size: 0.8em;
+      margin-top: 32px; padding-top: 16px;
+      border-top: 1px solid #d0d7de;
+    }
+  </style>
+</head>
+<body>
+<div class="page-wrap">
 
-  <File: path/to/file.c, line ~N>
+  <!-- ═══ HEADER CARD ═══ -->
+  <div class="review-header">
+    <h1>Review: <series subject or "Last N commits in &lt;repo&gt;" or "File &lt;path&gt; in &lt;repo&gt;"></h1>
+    <table>
+      <tr><td>Date</td><td>YYYY-MM-DD</td></tr>
+      <tr><td>Reviewer</td><td>AI agent (qgenie)</td></tr>
+      <tr><td>Mode</td><td>A — local commits | B — patch series | C — single file</td></tr>
+      <tr><td>Repository</td><td><code>&lt;project_path&gt;</code></td></tr>
+      <tr><td>Commits / Patches</td><td>N  <!-- omit row for Mode C --></td></tr>
+      <!-- Mode B only: -->
+      <tr><td>Branch</td><td><code>review/&lt;slug&gt;</code></td></tr>
+      <tr><td>Message-ID</td><td><code>&lt;message-id&gt;</code></td></tr>
+      <tr><td>lore.kernel.org</td>
+          <td><a href="https://lore.kernel.org/r/<message-id>">https://lore.kernel.org/r/&lt;message-id&gt;</a></td></tr>
+      <!-- Mode C only: -->
+      <tr><td>File</td><td><code>&lt;relative/path/to/file&gt;</code></td></tr>
+    </table>
+  </div>
 
-  Suggestion: <concrete fix>
+  <!-- ═══ VERDICT BANNER ═══ -->
+  <!-- Use class "needs-fixes", "needs-discussion", or "ready" on both
+       .verdict-banner and .verdict-pill to match the recommendation. -->
+  <div class="verdict-banner needs-fixes">
+    <h2>Overall Summary — Verdict at a Glance</h2>
+    <div class="verdict-pill needs-fixes">NEEDS FIXES</div>
+    <div class="stats-row">
+      <span class="stat-chip commits">N commits reviewed</span>
+      <span class="stat-chip bugs">N bugs</span>
+      <span class="stat-chip concerns">N concerns</span>
+      <span class="stat-chip minors">N minor issues</span>
+    </div>
 
-================================================================
+    <!-- Key findings grouped by category -->
+    <div class="findings-section">
 
----
-## Test Results
-## Per-Commit Reviews
+      <div class="findings-category">PATCH SCOPE VIOLATIONS</div>
+
+      <div class="finding-card concern">
+        <span class="badge concern">[CONCERN]</span>
+        <span class="title">&lt;commit hash&gt; — &lt;short title&gt;</span>
+        <div class="body">Full description: what is wrong, why it matters, root cause.</div>
+        <div class="file-ref">File: path/to/file.c, line ~N</div>
+        <div class="suggestion">Concrete fix or recommended action.</div>
+      </div>
+
+      <div class="findings-category">CORRECTNESS ISSUES</div>
+
+      <div class="finding-card bug">
+        <span class="badge bug">[BUG]</span>
+        <span class="title">&lt;commit hash&gt; — &lt;short title&gt;</span>
+        <div class="body">Full description.</div>
+        <div class="file-ref">File: path/to/file.c, line ~N</div>
+        <div class="suggestion">Concrete fix.</div>
+      </div>
+
+      <div class="findings-category">STYLE / MINOR</div>
+
+      <div class="finding-card minor">
+        <span class="badge minor">[MINOR]</span>
+        <span class="title">&lt;commit hash&gt; — &lt;short title&gt;</span>
+        <div class="body">Full description.</div>
+        <div class="suggestion">Concrete fix.</div>
+      </div>
+
+    </div><!-- /findings-section -->
+  </div><!-- /verdict-banner -->
+
+  <!-- ═══ TEST RESULTS ═══ -->
+  <div class="section-card">
+    <h2>Test Results</h2>
+    <table class="test-table">
+      <thead>
+        <tr><th>Test</th><th>Result</th><th>Notes</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>checkpatch</td>
+          <td><span class="result-pass">PASS</span></td>
+          <td>0 errors, 2 warnings (see below)</td>
+        </tr>
+        <tr>
+          <td>Build (W=1)</td>
+          <td><span class="result-pass">PASS</span></td>
+          <td>No new errors or warnings</td>
+        </tr>
+        <tr>
+          <td>dt_binding_check</td>
+          <td><span class="result-skip">SKIP</span></td>
+          <td>No .yaml files changed</td>
+        </tr>
+        <tr>
+          <td>sparse</td>
+          <td><span class="result-skip">SKIP</span></td>
+          <td>sparse not available</td>
+        </tr>
+      </tbody>
+    </table>
+    <!-- Verbatim checkpatch / build output goes here in a <pre> block -->
+    <h3>checkpatch findings</h3>
+    <pre>...verbatim output...</pre>
+  </div>
+
+  <!-- ═══ PER-COMMIT REVIEWS ═══ -->
+  <!-- Repeat one .commit-block per patch/commit -->
+  <div class="commit-block">
+    <div class="commit-header">
+      <span class="commit-hash">&lt;short-hash&gt;</span>
+      <span class="commit-subject">&lt;subject line&gt;</span>
+    </div>
+    <div class="commit-body">
+      <p class="commit-summary">One sentence describing what the commit does.</p>
+
+      <h3>Code Logic Maps</h3>
+      <pre>control-flow summary per changed function
+data-flow notes
+state/lifecycle notes (if applicable)
+call-graph notes (if applicable)
+before-vs-after delta</pre>
+
+      <!-- DT / DT-Binding Notes — only when applicable -->
+      <h3>DT / DT-Binding Notes</h3>
+      <ul>
+        <li>Schema validation result</li>
+        <li>compatible string correctness</li>
+      </ul>
+
+      <h3>Issues</h3>
+      <div class="finding-card bug">
+        <span class="badge bug">[BUG]</span>
+        <span class="title">Category: description.</span>
+        <div class="file-ref">File: path/to/file.c, line ~N</div>
+        <div class="suggestion">Concrete fix.</div>
+      </div>
+
+      <h3>Minor / Style</h3>
+      <div class="finding-card minor">
+        <span class="badge minor">[MINOR]</span>
+        <span class="title">Category: description.</span>
+        <div class="suggestion">Concrete fix.</div>
+      </div>
+
+      <h3>Positive Notes</h3>
+      <div class="positive-note">Positive observation about the patch.</div>
+
+    </div><!-- /commit-body -->
+  </div><!-- /commit-block -->
+
+  <!-- ═══ FOOTER ═══ -->
+  <div class="page-footer">
+    Generated by AI agent (qgenie) &mdash; <em>YYYY-MM-DD</em>
+  </div>
+
+</div><!-- /page-wrap -->
+</body>
+</html>
 ```
+
+### Severity-to-CSS-class mapping
+
+| Severity tag | CSS class on `.finding-card` and `.badge` |
+|---|---|
+| `[BUG]`     | `bug`     |
+| `[CONCERN]` | `concern` |
+| `[MINOR]`   | `minor`   |
+| `[NIT]`     | `nit`     |
+
+### Verdict-to-CSS-class mapping
+
+| Recommendation      | CSS class on `.verdict-banner` and `.verdict-pill` |
+|---|---|
+| READY TO APPLY      | `ready`            |
+| NEEDS FIXES         | `needs-fixes`      |
+| NEEDS DISCUSSION    | `needs-discussion` |
+
+### Result-to-CSS-class mapping (test table)
+
+| Result | CSS class on `<span>` |
+|---|---|
+| PASS   | `result-pass` |
+| FAIL   | `result-fail` |
+| WARN   | `result-warn` |
+| SKIP   | `result-skip` |
 
 **Writing strategy — chunked Write + Edit (mandatory)**
 
@@ -899,31 +1102,25 @@ manageable.  Never write the entire review in a single tool call.
 
 **Procedure**:
 
-1. **Create** the file with the header + overall-summary block using the
-   `Write` tool (≤ 80 lines of content):
+1. **Create** the file with the `<head>`, embedded CSS, and the header card +
+   verdict banner (Overall Summary) using the `Write` tool (≤ 120 lines):
 
-   - Write only the header block and the Overall Summary section.
-   - Do NOT include Test Results or per-commit blocks in this first call.
+   - Write from `<!DOCTYPE html>` through the closing `</div>` of the
+     verdict banner.
+   - Do NOT include the Test Results section or per-commit blocks yet.
+   - Leave the file open (do not write `</body></html>` yet).
 
-2. **Append** the Test Results section using the `Edit` tool, adding lines
-   at the end of the file (replace the last line with itself + new content).
+2. **Append** the Test Results `<div class="section-card">` block using the
+   `Edit` tool.
 
-3. **Append** each per-commit review block one at a time using the `Edit`
-   tool (one call per commit), replacing the last line of the current file
-   with itself + the new block.
+3. **Append** each per-commit `<div class="commit-block">` one at a time using
+   the `Edit` tool (one call per commit).
 
 3b. **Summarize & compress after each commit (mandatory — context-window hygiene)**
 
-   After appending a commit's review block to the file (step 3), immediately
-   discard the full diff and all intermediate analysis for that commit from
-   working memory.  Retain only a one-sentence summary of the commit and a
-   compact bullet list of its findings (severity tag + one-line description).
-   This compressed record is sufficient to write the Overall Summary later.
-
-   **Why**: kernel patch diffs, checkpatch output, and code-logic maps are
-   large.  Keeping them in context across multiple commits exhausts the model's
-   context window.  Writing to disk and compressing in-memory state after each
-   commit keeps the working context small regardless of series length.
+   After appending a commit's block to the file, immediately discard the full
+   diff and all intermediate analysis for that commit from working memory.
+   Retain only a one-sentence summary and a compact bullet list of findings.
 
    **Compressed record format** (keep in memory, never write to file):
    ```
@@ -934,23 +1131,35 @@ manageable.  Never write the entire review in a single tool call.
 
    Discard everything else for that commit before moving to the next one.
 
-4. **Confirm** after all chunks are written:
+4. **Close** the HTML document by appending the footer and closing tags:
+   ```html
+   <div class="page-footer">
+     Generated by AI agent (qgenie) &mdash; <em>YYYY-MM-DD</em>
+   </div>
+   </div><!-- /page-wrap -->
+   </body>
+   </html>
+   ```
+
+5. **Confirm** after all chunks are written:
    ```bash
    wc -l <project_path>/<filename>
    ```
 
-5. **Print the Overall Summary to the terminal** after confirming the file.
-   Copy the entire Overall Summary block (from the first `===` banner to the
-   closing `===` banner) verbatim to terminal output so the user can see the
-   verdict and key findings without opening the file.  Follow it with the
-   saved file path on its own line.
+6. **Print the Overall Summary to the terminal** after confirming the file.
+   Output the verdict, counts, and key findings as plain text so the user can
+   see the result without opening the file.  Follow it with the saved file
+   path on its own line.
 
 **Key rules**:
-- Each `Write` or `Edit` chunk should add ≤ 100 lines of new content.
+- Each `Write` or `Edit` chunk should add ≤ 120 lines of new content.
 - Use the `Write` tool only for the initial file creation (step 1).
-- Use the `Edit` tool for all subsequent appends (steps 2 and 3).
+- Use the `Edit` tool for all subsequent appends (steps 2–4).
 - Do NOT use shell heredocs, `printf`, or `echo` loops to write the file.
 - Do NOT use the Bash tool to write the review file.
+- Escape all user-supplied strings for HTML: `<` → `&lt;`, `>` → `&gt;`,
+  `&` → `&amp;`, `"` → `&quot;` when placing them inside HTML attributes or
+  text nodes.
 - After writing each commit's block, compress its in-memory representation
   to the one-sentence + bullet format from step 3b.  Never carry full diffs,
   checkpatch output, or code-logic maps across commit boundaries.

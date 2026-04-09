@@ -282,6 +282,38 @@ For each changed function, trace how data moves:
   array index, copy_to/from_user length, hardware register) without
   validation — these are prime correctness and security targets.
 
+#### Register read data-flow checklist
+
+Apply whenever a function reads a hardware register (`readl_relaxed`,
+`readl`, `readq`, `ioread32`, etc.):
+
+- **Width match**: is the local variable type wide enough for the register?
+  Use `u32` for 32-bit registers, `u64` for 64-bit.  A narrower type
+  silently truncates bits; a signed type (`int`) is a style violation and
+  can cause subtle bugs if the value is later used in signed arithmetic or
+  widened to a 64-bit signed type.
+- **Sign match**: trace every use of the register value after the read.
+  If the value is stored in a signed type, check whether it is ever:
+  (a) used in signed arithmetic or a signed comparison, or
+  (b) widened to a larger signed type (e.g. assigned to `long` or `s64`).
+  If neither applies, the mismatch is a style issue (`[NIT]`), not a bug —
+  C99 §6.3.1.3 guarantees that converting a negative `int` back to `u32`
+  preserves the bit pattern.  Only file `[BUG]` if a signed intermediate
+  value reaches signed arithmetic, a signed comparison, or sign-extension
+  across a wider type.
+- **Field extraction**: are `FIELD_GET()` / `BMVAL()` / shift+mask used
+  correctly?  Confirm the mask covers exactly the documented bit range and
+  the shift matches.
+- **Write-back (read-modify-write)**: confirm the read and write use the
+  same register offset, and that reserved bits are masked off before OR-ing
+  new values to avoid corrupting them.
+- **Endianness**: confirm `readl_relaxed` / `writel_relaxed` (little-endian
+  MMIO) is appropriate for the bus.  Flag if `__raw_readl` or `ioread32be`
+  would be needed instead.
+- **Barrier sufficiency**: confirm `readl_relaxed` (no ordering guarantee)
+  is appropriate at this call site, or whether `readl` (implicit barrier)
+  is required.
+
 ### 3c.3 State-Machine / Lifecycle Picture
 
 When the patch touches objects with a lifecycle (devices, buffers, locks,
@@ -650,6 +682,14 @@ subsystem manage equivalent state elsewhere (e.g. a per-instance flag vs. a
 shared flag)?  Only file the finding if you can show the fallthrough or missing
 update leads to genuinely incorrect behavior — not merely to code that looks
 asymmetric or incomplete.
+
+**Signed/unsigned type mismatches on register reads** — apply the register
+read data-flow checklist from Step 3c.2 before filing any finding.  A
+`u32` value stored in an `int` local and immediately returned as `u32` is
+safe (C99 §6.3.1.3 preserves the bit pattern); file at most `[NIT]` for
+the style violation.  Only escalate to `[BUG]` if the signed intermediate
+value is demonstrably used in signed arithmetic, a signed comparison, or
+widened to a larger signed type in a way that produces a wrong result.
 
 | Category | Key questions |
 |---|---|

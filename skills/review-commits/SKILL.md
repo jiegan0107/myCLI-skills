@@ -257,6 +257,11 @@ For each changed function, trace every execution path through the diff:
 - Note any loops: loop variable, termination condition, loop body side-effects,
   and whether the loop can run zero times.
 - Note any `fallthrough` in `switch` statements and confirm it is intentional.
+- **Diagnostic coverage check**: enumerate every `dev_err` / `dev_warn` /
+  `pr_err` call site and the exact set of conditions that reaches it.  Confirm
+  no two call sites fire for the same condition (i.e. a branch that already
+  emits its own message must not fall through into a second generic message for
+  the same event).  Flag redundant diagnostics as `[NIT]`.
 
 Produce a plain-text control-flow summary per function, e.g.:
 ```

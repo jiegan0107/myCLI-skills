@@ -743,7 +743,7 @@ Rendered as `<div class="verdict-banner [class]">` at the top of the page
   `.finding-card` elements.
 
 **Full-detail rule**: every `.finding-card` in the verdict banner must include
-the commit hash, a full description, the file path + line number, and a
+the patch subject line (not the commit hash), a full description, the file path + line number, and a
 concrete suggestion.  No one-liners.
 
 Severity levels: `[BUG]` · `[CONCERN]` · `[MINOR]` · `[NIT]`
@@ -991,7 +991,7 @@ with embedded CSS for readability.  The structure below is mandatory.
 
       <div class="finding-card concern">
         <span class="badge concern">[CONCERN]</span>
-        <span class="title">&lt;commit hash&gt; — &lt;short title&gt;</span>
+        <span class="title">&lt;patch subject&gt; — &lt;short title&gt;</span>
         <div class="body">Full description: what is wrong, why it matters, root cause.</div>
         <div class="file-ref">File: path/to/file.c, line ~N</div>
         <div class="suggestion">Concrete fix or recommended action.</div>
@@ -1001,7 +1001,7 @@ with embedded CSS for readability.  The structure below is mandatory.
 
       <div class="finding-card bug">
         <span class="badge bug">[BUG]</span>
-        <span class="title">&lt;commit hash&gt; — &lt;short title&gt;</span>
+        <span class="title">&lt;patch subject&gt; — &lt;short title&gt;</span>
         <div class="body">Full description.</div>
         <div class="file-ref">File: path/to/file.c, line ~N</div>
         <div class="suggestion">Concrete fix.</div>
@@ -1011,7 +1011,7 @@ with embedded CSS for readability.  The structure below is mandatory.
 
       <div class="finding-card minor">
         <span class="badge minor">[MINOR]</span>
-        <span class="title">&lt;commit hash&gt; — &lt;short title&gt;</span>
+        <span class="title">&lt;patch subject&gt; — &lt;short title&gt;</span>
         <div class="body">Full description.</div>
         <div class="suggestion">Concrete fix.</div>
       </div>

@@ -47,6 +47,8 @@ git show <hash>          # repeat for each commit
 
 ```bash
 cd <project_path>
+b4 --version   # confirm b4 is available; print version for the record
+               # if this fails, report the error and stop
 mkdir -p ./tmp
 b4 am <message-id> 2>&1 | tee ./tmp/b4_output.txt
 ```
@@ -67,12 +69,15 @@ git checkout -b <branch> [<base-commit>]
 git am ./<slug>.mbx
 ```
 
+If the `git checkout -b` line is absent from `b4 am` output, use the branch name
+`review/<slug>` where `<slug>` is derived from the Message-ID (the same slug used
+for the filename in Step 6).
+
 If `git am` fails: run `git am --abort`, report the conflict, and **stop**.
 
-Confirm with `git log --oneline HEAD~<N>..HEAD`, then clean up:
-```bash
-rm -f ./<slug>.mbx ./<slug>.cover 2>/dev/null || true
-```
+Confirm with `git log --oneline HEAD~<N>..HEAD`, then proceed to Step 2.
+Do **not** delete `.mbx` / `.cover` yet — they may be needed for context during
+the review.  Cleanup happens after the review file is written (see Step 5).
 
 ### Mode C
 
@@ -111,7 +116,7 @@ Run all tests **before** writing the review. Mark unavailable tools as `SKIP`.
 mkdir -p ./tmp/review_patches
 git format-patch HEAD~<N>..HEAD --output-directory ./tmp/review_patches/
 for patch in ./tmp/review_patches/*.patch; do
-    scripts/checkpatch.pl --no-tree "$patch"
+    scripts/checkpatch.pl --strict "$patch"
 done
 find ./tmp/review_patches -name "*.patch" -delete
 rmdir ./tmp/review_patches ./tmp 2>/dev/null || true
@@ -126,6 +131,12 @@ Identify affected subsystem dirs from the diffs, then:
 make ARCH=arm64 CROSS_COMPILE=aarch64-linux-gnu- W=1 <affected_dir>/
 ```
 
+For patches touching arch-neutral subsystems (e.g. `drivers/`, `fs/`, `mm/`),
+also run without `ARCH=arm64` to catch x86_64-specific warnings:
+```bash
+make W=1 <affected_dir>/
+```
+
 Skip if `.config` is absent. Record only `error:` / `warning:` lines in
 files touched by the commits.
 
@@ -136,13 +147,28 @@ Only when `Documentation/devicetree/bindings/` `.yaml` files are changed:
 make ARCH=arm64 DT_SCHEMA_FILES=<changed.yaml> dt_binding_check
 ```
 
-### 3.4 Sparse (optional)
+### 3.4 Sparse
 
 ```bash
 make ARCH=arm64 C=1 CF="-D__CHECK_ENDIAN__" <affected_dir>/
 ```
 
-### 3.5 Test summary table
+Mark result as `SKIP` in the test table only when the `sparse` tool is not installed
+(`which sparse` returns non-zero); never skip by design.
+
+### 3.5 Maintainer check
+
+```bash
+for patch in ./tmp/review_patches/*.patch; do
+    scripts/get_maintainer.pl "$patch"
+done
+```
+
+Record the output in the test summary table with result `INFO`.  This is
+informational (not pass/fail) but reminds patch authors of the correct
+`To:` / `Cc:` recipients before sending.
+
+### 3.6 Test summary table
 
 Output before the per-commit review:
 ```
@@ -152,6 +178,7 @@ Output before the per-commit review:
 | Build (W=1)      | PASS   | No new errors or warnings          |
 | dt_binding_check | SKIP   | No .yaml files changed             |
 | sparse           | SKIP   | sparse not available               |
+| get_maintainer   | INFO   | To/Cc list (see below)             |
 ```
 
 List checkpatch and build findings in full beneath the table.
@@ -178,7 +205,9 @@ severity tag.
 - Closing brace on its own line, except `} else {` and `} while (…);`.
 - Single-statement `if`/`for`/`while` bodies: **no braces** unless the
   companion branch uses braces.
-- Space after keywords: `if (`, `for (`, `while (`, `switch (`, `return (`.
+- Space after keywords: `if (`, `for (`, `while (`, `switch (`. Use `return expr;`
+  without parentheses unless the expression wraps across lines; do not flag
+  `return x;` as a style violation.
 - No space between function name and `(`: `foo(args)` not `foo (args)`.
 - Space around binary operators; no space after unary operators.
 - No space inside parentheses: `(x + y)` not `( x + y )`.
@@ -261,7 +290,9 @@ For each changed function, trace every execution path through the diff:
   `pr_err` call site and the exact set of conditions that reaches it.  Confirm
   no two call sites fire for the same condition (i.e. a branch that already
   emits its own message must not fall through into a second generic message for
-  the same event).  Flag redundant diagnostics as `[NIT]`.
+  the same event).  Flag redundant diagnostics as `[MINOR]` — duplicate messages
+  in `dmesg` are a real usability problem and harder to bisect; `[NIT]` understates
+  the impact.
 
 Produce a plain-text control-flow summary per function, e.g.:
 ```
@@ -577,7 +608,10 @@ violates this rule.
 **Raise `[CONCERN] Patch Scope`** whenever a patch:
 - Fixes two or more independent bugs in a single commit (each bug should be
   a separate patch, each with its own `Fixes:` tag).
-- Combines a bug-fix with an unrelated clean-up or style change.
+- Combines a bug-fix with a clean-up or style change that touches **different files
+  or subsystems**, or where the clean-up is large enough to obscure the fix.  A
+  minor comment or whitespace correction in the same function being fixed is
+  acceptable and must **not** be flagged.
 - Adds a new feature and simultaneously fixes a pre-existing bug.
 - Touches unrelated subsystems or files that have no logical dependency.
 - Has a subject line that contains "and", "also", "plus", or lists multiple
@@ -643,7 +677,9 @@ violates this rule.
    in the subject or body.
 5. **Tag ordering**: correct order is `Fixes:`, `Link:`, `Cc:`,
    `Reported-by:`, `Tested-by:`, `Reviewed-by:`, `Signed-off-by:`.
-   Flag `[MINOR]` if `Cc: stable@vger.kernel.org` appears before `Fixes:`.
+   Flag `[MINOR]` if `Cc: stable@vger.kernel.org` is present but `Fixes:` is
+   absent, or if `Fixes:` appears **after** `Cc: stable@vger.kernel.org`
+   (correct order: `Fixes:` first, then `Cc: stable@vger.kernel.org`).
 6. **Fixes: format**: hash must be exactly 12 characters; subject must be
    quoted. Flag `[MINOR]` if malformed.
 
@@ -687,6 +723,19 @@ subsystem manage equivalent state elsewhere (e.g. a per-instance flag vs. a
 shared flag)?  Only file the finding if you can show the fallthrough or missing
 update leads to genuinely incorrect behavior — not merely to code that looks
 asymmetric or incomplete.
+
+**Exception — always `[BUG]`, two-part gate does not apply**: the following
+classes of defect are correctness violations regardless of whether the resulting
+behavior "looks" harmless in a specific code path:
+- Reachable resource leaks: memory (`kzalloc` without matching `kfree` on all
+  error paths), OF node references (`of_find_*` / `of_get_*` without
+  `of_node_put()`), file descriptors, IRQ lines.
+- Sleeping in atomic/interrupt context: `mutex_lock()`, `msleep()`,
+  `schedule()`, or any function that may sleep, called while a spinlock is
+  held or from a softirq/hardirq handler.
+- `copy_to_user()` / `copy_from_user()` called without a prior `access_ok()`
+  check, or called while holding a spinlock.
+File these as `[BUG]` directly; do not apply the two-part gate.
 
 **Signed/unsigned type mismatches on register reads** — apply the register
 read data-flow checklist from Step 3c.2 before filing any finding.  A
@@ -903,6 +952,7 @@ with embedded CSS for readability.  The structure below is mandatory.
     .result-fail { color: #cf222e; font-weight: 700; }
     .result-warn { color: #e36209; font-weight: 700; }
     .result-skip { color: #6e7781; font-weight: 700; }
+    .result-info { color: #0550ae; font-weight: 700; }
 
     /* ── Commit blocks ── */
     .commit-block {
@@ -1052,6 +1102,11 @@ with embedded CSS for readability.  The structure below is mandatory.
           <td><span class="result-skip">SKIP</span></td>
           <td>sparse not available</td>
         </tr>
+        <tr>
+          <td>get_maintainer</td>
+          <td><span class="result-info">INFO</span></td>
+          <td>To/Cc list (see below)</td>
+        </tr>
       </tbody>
     </table>
     <!-- Verbatim checkpatch / build output goes here in a <pre> block -->
@@ -1139,6 +1194,7 @@ before-vs-after delta</pre>
 | FAIL   | `result-fail` |
 | WARN   | `result-warn` |
 | SKIP   | `result-skip` |
+| INFO   | `result-info` |
 
 **Writing strategy — chunked Write + Edit (mandatory)**
 
@@ -1162,6 +1218,9 @@ manageable.  Never write the entire review in a single tool call.
    the `Edit` tool (one call per commit).
 
 3b. **Summarize & compress after each commit (mandatory — context-window hygiene)**
+
+   > **INTERNAL REVIEWER NOTE — never emit this section or the compressed record
+   > format below into the HTML output.  This is working-memory guidance only.**
 
    After appending a commit's block to the file, immediately discard the full
    diff and all intermediate analysis for that commit from working memory.
@@ -1195,6 +1254,12 @@ manageable.  Never write the entire review in a single tool call.
    Output the verdict, counts, and key findings as plain text so the user can
    see the result without opening the file.  Follow it with the saved file
    path on its own line.
+
+7. **Mode B only — clean up patch files** after the review file is confirmed
+   written and the terminal summary is printed:
+   ```bash
+   rm -f ./<slug>.mbx ./<slug>.cover 2>/dev/null || true
+   ```
 
 **Key rules**:
 - Each `Write` or `Edit` chunk should add ≤ 120 lines of new content.

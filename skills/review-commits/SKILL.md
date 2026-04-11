@@ -371,6 +371,11 @@ reference counts, state flags):
   from Step 4: (1) is the condition reachable? (2) if reachable, is the
   resulting behavior actually harmful?  A no-op write or intentional omission
   managed by a per-instance field elsewhere is not a bug.
+  For pointer-dereference and missing-guard findings specifically: trace the
+  full call chain from the public entry point (file operation, sysfs callback,
+  interrupt handler) to the dereference site and confirm whether a prior gate
+  in the chain (e.g. an open/prepare function that returns an error) makes the
+  condition unreachable before filing.
 
 ### 3c.4 Interaction Picture
 

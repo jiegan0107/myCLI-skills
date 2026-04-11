@@ -33,6 +33,22 @@ tagged findings and an overall recommendation.
 
 If neither is clear, ask the user before proceeding.
 
+## Step 0 — Sync Repository and Create Review Branch
+
+Before obtaining any commits, ensure the local repository is up to date.
+
+```bash
+cd <project_path>
+
+# Pull latest HEAD from the tracked remote branch
+git pull
+```
+
+- If `git pull` reports conflicts or a non-fast-forward situation, stop and
+  report the error to the user before proceeding.
+- The review branch is created later: Mode B creates it during `git am` in
+  Step 1; Modes A and C do not require a dedicated branch.
+
 ## Step 1 — Obtain the Commits
 
 ### Mode A

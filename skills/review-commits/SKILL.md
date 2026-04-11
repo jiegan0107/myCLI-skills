@@ -1210,6 +1210,9 @@ manageable.  Never write the entire review in a single tool call.
      verdict banner.
    - Do NOT include the Test Results section or per-commit blocks yet.
    - Leave the file open (do not write `</body></html>` yet).
+   - **The verdict banner written here is a DRAFT** based on the automated
+     test results and initial code reading.  It MUST be reconciled with the
+     final per-commit findings before the file is closed (see step 4b).
 
 2. **Append** the Test Results `<div class="section-card">` block using the
    `Edit` tool.
@@ -1244,6 +1247,28 @@ manageable.  Never write the entire review in a single tool call.
    </body>
    </html>
    ```
+
+4b. **Reconcile the verdict banner (mandatory)**
+
+   The verdict banner was written in step 1 before the per-commit deep-dive.
+   The per-commit analysis may have promoted, demoted, dismissed, or reworded
+   findings.  Before confirming the file, diff the banner findings against the
+   compressed per-commit records from step 3b and fix every discrepancy:
+
+   - Every `[BUG]` / `[CONCERN]` card in the banner must correspond exactly
+     to a finding of the same severity in a per-commit block.
+   - Remove any banner finding that was dismissed or downgraded during the
+     per-commit review.
+   - Add any finding that was discovered during the per-commit review but is
+     missing from the banner.
+   - Update the stats-row chip counts (`N bugs`, `N concerns`, `N minor
+     issues`) to match the reconciled totals.
+   - Update the verdict pill and banner CSS class if the overall verdict
+     changed (e.g. a dismissed `[BUG]` drops the verdict from NEEDS FIXES to
+     NEEDS DISCUSSION).
+
+   Use the `Edit` tool to patch the banner in-place.  Do not rewrite the
+   entire file.
 
 5. **Confirm** after all chunks are written:
    ```bash

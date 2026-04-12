@@ -934,6 +934,9 @@ with embedded CSS for readability.  The structure below is mandatory.
     .badge.concern { background: #e36209; color: #fff; }
     .badge.minor   { background: #0550ae; color: #fff; }
     .badge.nit     { background: #6e7781; color: #fff; }
+    .finding-card .patch-subject {
+      font-size: 0.8em; color: #555; font-style: italic; margin-bottom: 4px;
+    }
     .finding-card .title { font-weight: 600; }
     .finding-card .body  { margin-top: 8px; color: #333; }
     .finding-card .file-ref {
@@ -1065,9 +1068,10 @@ with embedded CSS for readability.  The structure below is mandatory.
 
       <div class="findings-category">PATCH SCOPE VIOLATIONS</div>
 
-      <div class="finding-card concern">
-        <span class="badge concern">[CONCERN]</span>
+      <div class="finding-card bug">
+        <span class="badge bug">[BUG]</span>
         <span class="title">&lt;patch subject&gt; — &lt;short title&gt;</span>
+        <div class="patch-subject">Patch: &lt;NN/TT&gt; &lt;full commit subject line&gt;</div>
         <div class="body">Full description: what is wrong, why it matters, root cause.</div>
         <div class="file-ref">File: path/to/file.c, line ~N</div>
         <div class="suggestion">Concrete fix or recommended action.</div>
@@ -1162,7 +1166,9 @@ before-vs-after delta</pre>
       <h3>Issues</h3>
       <div class="finding-card bug">
         <span class="badge bug">[BUG]</span>
-        <span class="title">Category: description.</span>
+        <span class="title">Category: short summary of the bug.</span>
+        <div class="patch-subject">Patch: &lt;NN/TT&gt; &lt;full commit subject line&gt;</div>
+        <div class="body">Detailed analysis: root cause, how it manifests, why it is harmful.</div>
         <div class="file-ref">File: path/to/file.c, line ~N</div>
         <div class="suggestion">Concrete fix.</div>
       </div>
@@ -1170,7 +1176,9 @@ before-vs-after delta</pre>
       <h3>Minor / Style</h3>
       <div class="finding-card minor">
         <span class="badge minor">[MINOR]</span>
-        <span class="title">Category: description.</span>
+        <span class="title">Category: short summary.</span>
+        <div class="patch-subject">Patch: &lt;NN/TT&gt; &lt;full commit subject line&gt;</div>
+        <div class="body">Detailed analysis.</div>
         <div class="suggestion">Concrete fix.</div>
       </div>
 
@@ -1335,10 +1343,13 @@ manageable.  Never write the entire review in a single tool call.
    elements for every `[BUG]` and `[CONCERN]`.  A single `<div>` with
    inline text is not acceptable.
 
-3. **Every `.finding-card` must use the four sub-elements.**  Each card
-   MUST contain: `.badge`, `.title`, `.body`, `.file-ref`, and `.suggestion`
-   as separate child elements.  Do not flatten these into inline `<br>`-
-   separated text.
+3. **Every `.finding-card` must use the five sub-elements in order.**  Each card
+   MUST contain, in this order: `.badge`, `.title` (short summary), `.patch-subject`
+   (full commit subject line prefixed with "Patch: NN/TT"), `.body` (detailed
+   analysis), `.file-ref`, and `.suggestion`.  Do not flatten these into inline
+   `<br>`-separated text.  The `.patch-subject` element is mandatory so the reader
+   always knows which patch a finding belongs to without having to scroll to the
+   commit header.
 
 4. **Every `.commit-block` must use `.commit-header` / `.commit-body`.**
    The header contains `.commit-hash` and `.commit-subject` spans.  The

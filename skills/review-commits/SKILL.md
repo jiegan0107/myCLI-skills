@@ -1244,10 +1244,13 @@ manageable.  Never write the entire review in a single tool call.
      final per-commit findings before the file is closed (see step 4b).
 
 2. **Append** the Test Results `<div class="section-card">` block using the
-   `Edit` tool.
+   `Edit` tool.  Before constructing the `old_string` anchor, run
+   `tail -8 <project_path>/<filename>` and copy the exact output verbatim.
 
 3. **Append** each per-commit `<div class="commit-block">` one at a time using
-   the `Edit` tool (one call per commit).
+   the `Edit` tool (one call per commit).  Before each call, run
+   `tail -8 <project_path>/<filename>` and copy the exact output verbatim as
+   the `old_string` anchor.
 
 3b. **Summarize & compress after each commit (mandatory — context-window hygiene)**
 
@@ -1319,6 +1322,11 @@ manageable.  Never write the entire review in a single tool call.
 - Each `Write` or `Edit` chunk should add ≤ 120 lines of new content.
 - Use the `Write` tool only for the initial file creation (step 1).
 - Use the `Edit` tool for all subsequent appends (steps 2–4).
+- **Before every `Edit` append, run `tail -8 <file>` and use the exact output
+  verbatim as `old_string`.  Never construct `old_string` from memory, from
+  text drafted in a previous turn, or by adding HTML comments that were not
+  literally written to the file.  An invented or stale anchor causes a silent
+  match failure that blocks all subsequent work.**
 - Do NOT use shell heredocs, `printf`, or `echo` loops to write the file.
 - Do NOT use the Bash tool to write the review file.
 - Escape all user-supplied strings for HTML: `<` → `&lt;`, `>` → `&gt;`,

@@ -90,8 +90,19 @@ If the `git checkout -b` line is absent from `b4 am` output, use the branch name
 for the filename in Step 6).
 
 If `git am` fails: run `git am --abort`, report the conflict, and **stop**.
+Do NOT fall back to reading patches from the mbx file directly and continuing
+the review.  Reading multiple patches in one batch collapses the per-patch
+before/after boundary, making inter-patch bisectability violations invisible:
+a write removed in patch N and restored in patch N+1 looks correct when both
+are read together, but the tree is broken between them.  The only safe review
+path requires each patch applied as a discrete commit.
 
 Confirm with `git log --oneline HEAD~<N>..HEAD`, then proceed to Step 2.
+**Patch count check (mandatory):** count the commits in that log output and
+compare against `Total patches:` from `b4 am`.  If the counts differ, `b4 am`
+silently dropped patches (e.g. threaded replies misidentified as non-patches).
+Stop, report the discrepancy with the exact counts, and ask the user how to
+proceed — do not review a partial series as if it were complete.
 Do **not** delete `.mbx` / `.cover` yet — they may be needed for context during
 the review.  Cleanup happens after the review file is written (see Step 5).
 

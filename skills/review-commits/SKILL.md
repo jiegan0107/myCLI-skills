@@ -137,18 +137,46 @@ tree.
 
 **Per-patch review procedure (one iteration per patch, in order 1 → T):**
 
+**BATCHING PATCHES IS FORBIDDEN.**  Every patch must be reviewed individually
+at its own tree state.  Grouping multiple patches into a single commit block
+(e.g. "Patches 1–6") is a violation of this rule regardless of how similar or
+preparatory the patches appear.  A 39-patch series requires 39 separate commit
+blocks, each produced after the corresponding checkout below.
+
+For each patch N from 1 to T (inclusive), execute this sequence in full before
+moving to patch N+1:
+
 ```bash
-git checkout HEAD~$((T - N))   # 1. move to tree state after patch N
-git show HEAD                  # 2. obtain patch N's own diff — this is the
-                               #    authoritative source for what patch N changed
-# 3. read surrounding files for context — they reflect the state patch N's
-#    author saw, not any later modifications introduced by patches N+1..T
+# Step A — move to the correct tree state
+git checkout HEAD~$((T - N))
+
+# Step B — mandatory self-audit: confirm HEAD is now patch N
+git log --oneline -1
+# Record the hash and subject printed here.
+# If the hash does not match the expected patch N hash from the series log,
+# STOP and report the mismatch — do not proceed with a wrong tree state.
+
+# Step C — obtain patch N's own diff
+git show HEAD
+# This is the authoritative source for what patch N changed.
+# Do NOT use git show <hash> without the checkout above — surrounding
+# files would still reflect the wrong tree state.
+
+# Step D — read surrounding context files for patch N
+# (headers, Kconfig, Makefile, Documentation/ABI/ as applicable)
 ```
 
-After finishing the review of patch N, advance to patch N+1:
+After writing the commit block for patch N, advance to patch N+1:
 ```bash
 git checkout HEAD~$((T - N - 1))
+# Then repeat Step B–D for patch N+1.
 ```
+
+**Self-audit rule (mandatory):** The hash printed by `git log --oneline -1`
+in Step B must be recorded in the commit block header.  If at any point the
+recorded hash does not match the patch being reviewed, the review of that patch
+is invalid and must be redone from Step A.  This makes tree-state errors
+self-evident rather than silently producing contaminated findings.
 
 **Why `git show HEAD` must be run after the checkout, not before:**
 Running `git show HEAD` before the checkout gives the diff of whichever commit
@@ -160,7 +188,7 @@ first — the surrounding files would still reflect the wrong tree state.
 **Inter-patch contamination check:** Before writing any finding for patch N,
 explicitly verify that the code under review was introduced by patch N and not
 by a later patch.  If a function or variable visible in `git show HEAD` for
-patch N is also modified by patch N+1..T, note the dependency in the per-commit
+patch N is also modified by patches N+1..T, note the dependency in the per-commit
 Code Logic Maps section so the reviewer of the later patch can cross-reference.
 
 When the series has only one patch, or when reviewing Mode A local commits,
@@ -1371,6 +1399,9 @@ manageable.  Never write the entire review in a single tool call.
    ```
 
 **Key rules**:
+- **One commit block per patch — no batching.**  A series of T patches requires
+  exactly T `.commit-block` elements.  Grouping multiple patches into one block
+  is forbidden regardless of patch count or similarity.
 - Each `Write` or `Edit` chunk should add ≤ 120 lines of new content.
 - Use the `Write` tool only for the initial file creation (step 1).
 - Use the `Edit` tool for all subsequent appends (steps 2–4).
@@ -1415,6 +1446,10 @@ manageable.  Never write the entire review in a single tool call.
    The header contains `.commit-hash` and `.commit-subject` spans.  The
    body contains the summary paragraph, Code Logic Maps `<pre>`, optional
    DT notes, Issues section, Minor/Style section, and Positive Notes.
+   **The `.commit-hash` span must contain the exact 12-character hash
+   recorded from `git log --oneline -1` in Step B of the per-patch procedure
+   — never a hash range, never a fabricated value.**  One block per patch;
+   a T-patch series produces exactly T `.commit-block` elements.
 
 5. **Code Logic Maps section is mandatory in every commit block.**  Every
    `<div class="commit-body">` MUST contain an `<h3>Code Logic Maps</h3>`

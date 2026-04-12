@@ -126,8 +126,49 @@ wc -l <file_path>        # note total line count
 
 ## Step 2 — Gather Context
 
-For every changed file:
-- Read the full diff (`git show <hash>`)
+**Tree state discipline (mandatory):** The working tree after all patches are
+applied reflects the *final* state, not the state after any individual patch.
+A later patch may modify, extend, or fix something introduced by an earlier
+patch; reviewing from the final tree makes those inter-patch deltas invisible
+and produces incorrect findings for the earlier patch.  For every patch N in a
+series of total T patches, the diff AND all surrounding context must be read
+from the tree state immediately after patch N is applied — never from the final
+tree.
+
+**Per-patch review procedure (one iteration per patch, in order 1 → T):**
+
+```bash
+git checkout HEAD~$((T - N))   # 1. move to tree state after patch N
+git show HEAD                  # 2. obtain patch N's own diff — this is the
+                               #    authoritative source for what patch N changed
+# 3. read surrounding files for context — they reflect the state patch N's
+#    author saw, not any later modifications introduced by patches N+1..T
+```
+
+After finishing the review of patch N, advance to patch N+1:
+```bash
+git checkout HEAD~$((T - N - 1))
+```
+
+**Why `git show HEAD` must be run after the checkout, not before:**
+Running `git show HEAD` before the checkout gives the diff of whichever commit
+HEAD currently points to, which may be a later patch.  The checkout moves HEAD
+to the correct commit; only then does `git show HEAD` return patch N's diff.
+Never use `git show <hash>` as a shortcut without also checking out that commit
+first — the surrounding files would still reflect the wrong tree state.
+
+**Inter-patch contamination check:** Before writing any finding for patch N,
+explicitly verify that the code under review was introduced by patch N and not
+by a later patch.  If a function or variable visible in `git show HEAD` for
+patch N is also modified by patch N+1..T, note the dependency in the per-commit
+Code Logic Maps section so the reviewer of the later patch can cross-reference.
+
+When the series has only one patch, or when reviewing Mode A local commits,
+the same rule applies: check out the commit being reviewed before reading
+context files or obtaining its diff.
+
+For every changed file (at the correct tree state per above):
+- Read the full diff (`git show HEAD`)
 - Read surrounding code for patterns, naming conventions, locking models
 - Check related headers for struct definitions and macros
 - Check `Kconfig` / `Makefile` if new files or config symbols are added

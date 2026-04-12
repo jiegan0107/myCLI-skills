@@ -65,13 +65,13 @@ git show <hash>          # repeat for each commit
 cd <project_path>
 b4 --version   # confirm b4 is available; print version for the record
                # if this fails, report the error and stop
-mkdir -p ./tmp
-b4 am <message-id> 2>&1 | tee ./tmp/b4_output.txt
+mkdir -p <project_path>/tmp
+b4 am <message-id> 2>&1 | tee <project_path>/tmp/b4_output.txt
 ```
 
-If `b4 am` exits non-zero: print `./tmp/b4_output.txt` and **stop**.
+If `b4 am` exits non-zero: print `<project_path>/tmp/b4_output.txt` and **stop**.
 
-Parse `./tmp/b4_output.txt` for:
+Parse `<project_path>/tmp/b4_output.txt` for:
 - **Total patches** — integer after `Total patches:`
 - **mbx filename** — filename on the `git am ./` line
 - **Base commit** — hash on the `git checkout -b` line (use `HEAD` if absent)
@@ -247,13 +247,13 @@ Run all tests **before** writing the review. Mark unavailable tools as `SKIP`.
 ### 3.1 checkpatch
 
 ```bash
-mkdir -p ./tmp/review_patches
-git format-patch HEAD~<N>..HEAD --output-directory ./tmp/review_patches/
-for patch in ./tmp/review_patches/*.patch; do
+mkdir -p <project_path>/tmp/review_patches
+git format-patch HEAD~<N>..HEAD --output-directory <project_path>/tmp/review_patches/
+for patch in <project_path>/tmp/review_patches/*.patch; do
     scripts/checkpatch.pl --strict "$patch"
 done
-find ./tmp/review_patches -name "*.patch" -delete
-rmdir ./tmp/review_patches ./tmp 2>/dev/null || true
+find <project_path>/tmp/review_patches -name "*.patch" -delete
+rmdir <project_path>/tmp/review_patches <project_path>/tmp 2>/dev/null || true
 ```
 
 Record all `ERROR:` and `WARNING:` lines per patch verbatim.
@@ -293,7 +293,7 @@ Mark result as `SKIP` in the test table only when the `sparse` tool is not insta
 ### 3.5 Maintainer check
 
 ```bash
-for patch in ./tmp/review_patches/*.patch; do
+for patch in <project_path>/tmp/review_patches/*.patch; do
     scripts/get_maintainer.pl "$patch"
 done
 ```

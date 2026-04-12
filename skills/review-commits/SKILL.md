@@ -79,6 +79,44 @@ Parse `./tmp/b4_output.txt` for:
 
 If no `Total patches:` line despite exit 0: report full output and **stop**.
 
+**Cover letter dependency check (mandatory — do this before applying patches):**
+
+Read `./<slug>.cover` immediately after `b4 am` succeeds.  Scan the cover
+letter for any stated external dependencies — these appear as any of:
+
+- `Depends-on:` pseudo-tag followed by a Message-ID or URL
+- Prose such as "this series depends on", "requires", "based on", "on top of",
+  "prerequisite", or "applies after" followed by a series title, Message-ID,
+  or lore.kernel.org URL
+- A `Link:` or `https://lore.kernel.org/` reference in the cover letter body
+  that is described as a prerequisite (not merely a related discussion)
+
+For each dependency found:
+
+1. **Extract the identifier** — Message-ID, commit hash, or lore URL.
+2. **Check whether it is present in the base commit:**
+   ```bash
+   git log --oneline <base-commit> | head -20
+   # or, if a commit hash is given:
+   git merge-base --is-ancestor <dep-hash> <base-commit> && echo "present" || echo "MISSING"
+   ```
+3. **If the dependency is present**: note it as satisfied in the review header
+   and proceed normally.
+4. **If the dependency is missing or cannot be verified**:
+   - Record it as `DEPENDENCY MISSING` in the review header card (add a
+     `Dependencies` row to the header table).
+   - Add a `[CONCERN] Missing prerequisite` finding to the verdict banner
+     with the dependency identifier and a note that findings in this review
+     may be incorrect or incomplete until the prerequisite is applied.
+   - Do **not** stop the review — continue and flag individual findings that
+     appear to be caused by the missing dependency with the note
+     `"May be resolved by prerequisite: <identifier>"`.
+   - Do **not** dismiss real bugs just because a dependency is missing —
+     only flag findings where the missing code is the direct cause.
+
+If no cover letter exists or no dependencies are mentioned, record
+`Dependencies: none stated` in the header and proceed.
+
 Apply patches:
 ```bash
 git checkout -b <branch> [<base-commit>]
@@ -1125,6 +1163,16 @@ with embedded CSS for readability.  The structure below is mandatory.
       <tr><td>Message-ID</td><td><code>&lt;message-id&gt;</code></td></tr>
       <tr><td>lore.kernel.org</td>
           <td><a href="https://lore.kernel.org/r/<message-id>">https://lore.kernel.org/r/&lt;message-id&gt;</a></td></tr>
+      <!-- Mode B only — always present, even when no dependencies: -->
+      <tr><td>Dependencies</td><td>
+        <!-- If none stated: -->
+        None stated
+        <!-- If present and satisfied: -->
+        <!-- <code>&lt;identifier&gt;</code> — present in base commit -->
+        <!-- If missing: -->
+        <!-- <strong style="color:#cf222e">MISSING: &lt;identifier&gt;</strong>
+             — findings may be affected; see verdict banner -->
+      </td></tr>
       <!-- Mode C only: -->
       <tr><td>File</td><td><code>&lt;relative/path/to/file&gt;</code></td></tr>
     </table>
